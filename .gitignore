@@ -5,3 +5,4 @@ bin/
 *.exe
 *.out
 .DS_Store
+progress.md
