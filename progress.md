@@ -8,8 +8,13 @@
 明天做：
 - 写注册接口的请求结构体
 ## 3.20
-- [ ] 做两道 leet code
+- [x] 做两道 leet code
 - [x] 完成注册路径
 - [x] 写progress.md
 明天做:
 - 梳理web-service-repository-dao
+## 3.21
+- [x] 做两首leet code hot 100
+- [x] 完成登录的JWT的使用
+- [x] 完成JWT中间件
+明天做:

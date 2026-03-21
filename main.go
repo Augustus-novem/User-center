@@ -7,6 +7,7 @@ import (
 	"user-center/internal/repository/dao"
 	"user-center/internal/service"
 	"user-center/internal/web"
+	"user-center/internal/web/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -38,7 +39,8 @@ func initWebServer() *gin.Engine {
 	server.Use(cors.New(
 		cors.Config{
 			AllowCredentials: true,
-			AllowHeaders:     []string{"content-type"},
+			AllowHeaders:     []string{"Content-Type", "Authorization"},
+			ExposeHeaders:    []string{"x-jwt-token"},
 			AllowOriginFunc: func(origin string) bool {
 				if strings.HasPrefix(origin, "http://localhost") {
 					return true
@@ -48,7 +50,13 @@ func initWebServer() *gin.Engine {
 			MaxAge: 12 * time.Hour,
 		},
 	))
+	usingJWT(server)
 	return server
+}
+
+func usingJWT(server *gin.Engine) {
+	builder := &middleware.JWTLoginMiddlewareBuilder{}
+	server.Use(builder.Build())
 }
 
 func initUser(db *gorm.DB, server *gin.Engine) {
