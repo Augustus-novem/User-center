@@ -3,7 +3,9 @@ package main
 import (
 	"strings"
 	"time"
+	"user-center/config"
 	"user-center/internal/repository"
+	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
 	"user-center/internal/service"
 	"user-center/internal/web"
@@ -11,19 +13,31 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 func main() {
 	db := initDB()
+	Cmd := initRedis()
 	server := initWebServer()
-	initUser(db, server)
+	initUser(server, db, Cmd)
 	server.Run(":8081")
 }
 
+func initRedis() redis.Cmdable {
+	redisCfg := config.Config.Redis
+	Cmd := redis.NewClient(&redis.Options{
+		Addr:     redisCfg.Addr,
+		Password: redisCfg.Password,
+		DB:       redisCfg.DB,
+	})
+	return Cmd
+}
+
 func initDB() *gorm.DB {
-	db, err := gorm.Open(mysql.Open("root:root@tcp(localhost:13316)/user_center"))
+	db, err := gorm.Open(mysql.Open(config.Config.DB.DSN))
 	if err != nil {
 		panic("failed to connect database")
 	}
@@ -59,9 +73,10 @@ func usingJWT(server *gin.Engine) {
 	server.Use(builder.Build())
 }
 
-func initUser(db *gorm.DB, server *gin.Engine) {
+func initUser(server *gin.Engine, db *gorm.DB, cmd redis.Cmdable) {
 	ud := dao.NewUserDao(db)
-	ur := repository.NewUserRepo(ud)
+	uc := cache.NewUserCache(cmd)
+	ur := repository.NewUserRepo(ud, uc)
 	us := service.NewUserService(ur)
 	uh := web.NewUserHandler(us)
 	uh.Register(server)

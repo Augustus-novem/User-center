@@ -47,7 +47,11 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		if expireAt.Sub(now) < time.Second*50 {
+		if ctx.GetHeader("User-Agent") != uc.UserAgent {
+			ctx.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		if expireAt.Sub(now) < time.Minute*20 {
 			uc.ExpiresAt = jwt.NewNumericDate(now.Add(time.Minute))
 			newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, uc)
 			newTokenStr, err := newToken.SignedString(web.JWTKey)

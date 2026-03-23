@@ -154,9 +154,10 @@ func (u *UserHandler) LogIn(ctx *gin.Context) {
 		return
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, UserClaims{
-		Id: user.Id,
+		Id:        user.Id,
+		UserAgent: ctx.GetHeader("User-Agent"),
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30)),
 		},
 	})
 	tokenStr, err := token.SignedString(JWTKey)
