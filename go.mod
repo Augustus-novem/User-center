@@ -4,6 +4,7 @@ go 1.25.1
 
 require (
 	github.com/dlclark/regexp2 v1.11.5
+	github.com/ecodeclub/ekit v0.0.10
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-sql-driver/mysql v1.9.3

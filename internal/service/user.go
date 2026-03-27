@@ -9,14 +9,14 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrUserDuplicateEmail = repository.ErrUserDuplicateEmail
+var ErrUserDuplicate = repository.ErrUserDuplicate
 var ErrInvalidUserOrPassword = errors.New("用户名或密码不正确")
 
 type UserService struct {
-	UserRepo *repository.UserRepo
+	UserRepo *repository.UserRepository
 }
 
-func NewUserService(userRepo *repository.UserRepo) *UserService {
+func NewUserService(userRepo *repository.UserRepository) *UserService {
 	return &UserService{
 		UserRepo: userRepo,
 	}
@@ -30,6 +30,20 @@ func (us *UserService) SignUp(c context.Context, user domain.User) error {
 	}
 	user.Password = string(hash)
 	return us.UserRepo.Create(c, user)
+}
+
+func (us *UserService) FindOrCreate(ctx context.Context, phone string) (domain.User, error) {
+	user, err := us.UserRepo.FindByPhone(ctx, phone)
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		return user, err
+	}
+	err = us.UserRepo.Create(ctx, domain.User{
+		Phone: phone,
+	})
+	if err != nil && !errors.Is(err, repository.ErrUserDuplicate) {
+		return domain.User{}, err
+	}
+	return us.UserRepo.FindByPhone(ctx, phone)
 }
 
 func (us *UserService) Login(c context.Context,

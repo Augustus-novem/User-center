@@ -6,17 +6,29 @@ import (
 	"time"
 	"user-center/internal/web"
 
+	"github.com/ecodeclub/ekit/set"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
 
 type JWTLoginMiddlewareBuilder struct {
+	publicPaths set.Set[string]
+}
+
+func NewJWTLoginMiddlewareBuilder() JWTLoginMiddlewareBuilder {
+	s := set.NewMapSet[string](2)
+	s.Add("/user/login")
+	s.Add("/user/signup")
+	s.Add("/user/login_sms")
+	s.Add("/user/login_sms/code/send")
+	return JWTLoginMiddlewareBuilder{
+		publicPaths: s,
+	}
 }
 
 func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		path := ctx.Request.URL.Path
-		if path == "/user/login" || path == "/user/signup" {
+		if j.publicPaths.Exist(ctx.Request.URL.Path) {
 			return
 		}
 		authCode := ctx.Request.Header.Get("Authorization")
@@ -52,7 +64,7 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 			return
 		}
 		if expireAt.Sub(now) < time.Minute*20 {
-			uc.ExpiresAt = jwt.NewNumericDate(now.Add(time.Minute))
+			uc.ExpiresAt = jwt.NewNumericDate(now.Add(time.Minute * 30))
 			newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, uc)
 			newTokenStr, err := newToken.SignedString(web.JWTKey)
 			if err == nil {
