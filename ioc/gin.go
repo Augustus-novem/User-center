@@ -1,19 +1,33 @@
-package main
+package ioc
 
 import (
 	"strings"
 	"time"
-	"user-center/internal/service"
 	"user-center/internal/web"
 	"user-center/internal/web/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
-func initWebServer(userSvc *service.UserService, codeSvc *service.CodeService) *gin.Engine {
+func InitWebServer(funcs []gin.HandlerFunc,
+	userHdl *web.UserHandler) *gin.Engine {
 	server := gin.Default()
-	server.Use(cors.New(
+	server.Use(funcs...)
+	userHdl.RegisterRoutes(server)
+	return server
+}
+
+func GinMiddlwares(cmd redis.Cmdable) []gin.HandlerFunc {
+	return []gin.HandlerFunc{
+		corsHandler(),
+		middleware.NewJWTLoginMiddlewareBuilder().Build(),
+	}
+}
+
+func corsHandler() gin.HandlerFunc {
+	return cors.New(
 		cors.Config{
 			AllowCredentials: true,
 			AllowHeaders:     []string{"Content-Type", "Authorization"},
@@ -26,16 +40,5 @@ func initWebServer(userSvc *service.UserService, codeSvc *service.CodeService) *
 			},
 			MaxAge: 12 * time.Hour,
 		},
-	))
-	usingJWT(server)
-
-	userHdl := web.NewUserHandler(userSvc, codeSvc)
-	userHdl.Register(server)
-
-	return server
-}
-
-func usingJWT(server *gin.Engine) {
-	builder := middleware.NewJWTLoginMiddlewareBuilder()
-	server.Use(builder.Build())
+	)
 }

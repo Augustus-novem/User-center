@@ -15,13 +15,13 @@ type JWTLoginMiddlewareBuilder struct {
 	publicPaths set.Set[string]
 }
 
-func NewJWTLoginMiddlewareBuilder() JWTLoginMiddlewareBuilder {
+func NewJWTLoginMiddlewareBuilder() *JWTLoginMiddlewareBuilder {
 	s := set.NewMapSet[string](2)
 	s.Add("/user/login")
 	s.Add("/user/signup")
 	s.Add("/user/login_sms")
 	s.Add("/user/login_sms/code/send")
-	return JWTLoginMiddlewareBuilder{
+	return &JWTLoginMiddlewareBuilder{
 		publicPaths: s,
 	}
 }
@@ -63,8 +63,8 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		if expireAt.Sub(now) < time.Minute*20 {
-			uc.ExpiresAt = jwt.NewNumericDate(now.Add(time.Minute * 30))
+		if expireAt.Sub(now) < time.Minute*10 {
+			uc.ExpiresAt = jwt.NewNumericDate(now.Add(time.Minute * 15))
 			newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, uc)
 			newTokenStr, err := newToken.SignedString(web.JWTKey)
 			if err == nil {

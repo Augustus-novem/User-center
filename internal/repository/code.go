@@ -10,21 +10,26 @@ var (
 	ErrCodeSendTooMany        = cache.ErrCodeSendTooMany
 )
 
-type CodeRepository struct {
-	CodeCache *cache.CodeCache
+type CodeRepository interface {
+	Store(ctx context.Context, biz, phone, code string) error
+	Verify(ctx context.Context, biz, phone, inputCode string) (bool, error)
 }
 
-func NewCodeRepository(codeCache *cache.CodeCache) *CodeRepository {
-	return &CodeRepository{
+type CachedCodeRepository struct {
+	CodeCache cache.CodeCache
+}
+
+func NewCachedCodeRepository(codeCache cache.CodeCache) *CachedCodeRepository {
+	return &CachedCodeRepository{
 		CodeCache: codeCache,
 	}
 }
 
-func (cr *CodeRepository) Verify(ctx context.Context,
+func (cr *CachedCodeRepository) Verify(ctx context.Context,
 	biz, phone, code string) (bool, error) {
 	return cr.CodeCache.Verify(ctx, biz, phone, code)
 }
 
-func (cr *CodeRepository) Store(ctx context.Context, biz, phone, code string) error {
+func (cr *CachedCodeRepository) Store(ctx context.Context, biz, phone, code string) error {
 	return cr.CodeCache.Set(ctx, biz, phone, code)
 }

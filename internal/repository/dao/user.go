@@ -15,17 +15,24 @@ var (
 	ErrUserDuplicate = errors.New("用户已存在")
 )
 
-type UserDAO struct {
+type UserDAO interface {
+	Insert(ctx context.Context, user UserOfDB) error
+	FindByEmail(ctx context.Context, email string) (UserOfDB, error)
+	FindById(ctx context.Context, id int64) (UserOfDB, error)
+	FindByPhone(ctx context.Context, phone string) (UserOfDB, error)
+}
+
+type GORMUserDAO struct {
 	db *gorm.DB
 }
 
-func NewUserDao(db *gorm.DB) *UserDAO {
-	return &UserDAO{
+func NewGORMUserDAO(db *gorm.DB) *GORMUserDAO {
+	return &GORMUserDAO{
 		db: db,
 	}
 }
 
-func (ud *UserDAO) Insert(ctx context.Context, user UserOfDB) error {
+func (ud *GORMUserDAO) Insert(ctx context.Context, user UserOfDB) error {
 	user.Ctime = time.Now().UnixMilli()
 	user.Utime = time.Now().UnixMilli()
 	err := ud.db.WithContext(ctx).Create(&user).Error
@@ -39,7 +46,7 @@ func (ud *UserDAO) Insert(ctx context.Context, user UserOfDB) error {
 	return err
 }
 
-func (ud *UserDAO) FindByEmail(ctx context.Context, email string) (UserOfDB, error) {
+func (ud *GORMUserDAO) FindByEmail(ctx context.Context, email string) (UserOfDB, error) {
 	var user UserOfDB
 	err := ud.db.WithContext(ctx).
 		Where("email = ?", email).
@@ -47,7 +54,7 @@ func (ud *UserDAO) FindByEmail(ctx context.Context, email string) (UserOfDB, err
 	return user, err
 }
 
-func (ud *UserDAO) FindById(ctx context.Context, Id int64) (UserOfDB, error) {
+func (ud *GORMUserDAO) FindById(ctx context.Context, Id int64) (UserOfDB, error) {
 	var user UserOfDB
 	err := ud.db.WithContext(ctx).
 		Where("id = ?", Id).
@@ -55,7 +62,7 @@ func (ud *UserDAO) FindById(ctx context.Context, Id int64) (UserOfDB, error) {
 	return user, err
 }
 
-func (ud *UserDAO) FindByPhone(ctx context.Context, phone string) (UserOfDB, error) {
+func (ud *GORMUserDAO) FindByPhone(ctx context.Context, phone string) (UserOfDB, error) {
 	var user UserOfDB
 	err := ud.db.WithContext(ctx).
 		Where("phone= ?", phone).

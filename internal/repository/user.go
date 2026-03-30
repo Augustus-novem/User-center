@@ -13,19 +13,26 @@ var (
 	ErrUserNotFound  = dao.ErrDataNotFound
 )
 
-type UserRepository struct {
-	dao   *dao.UserDAO
-	cache *cache.UserCache
+type UserRepository interface {
+	Create(ctx context.Context, user domain.User) error
+	FindByPhone(ctx context.Context, phone string) (domain.User, error)
+	FindByID(ctx context.Context, id int64) (domain.User, error)
+	FindByEmail(ctx context.Context, email string) (domain.User, error)
 }
 
-func NewUserRepo(dao *dao.UserDAO, cmd *cache.UserCache) *UserRepository {
-	return &UserRepository{
+type CachedUserRepository struct {
+	dao   dao.UserDAO
+	cache cache.UserCache
+}
+
+func NewCachedUserRepository(dao dao.UserDAO, cmd cache.UserCache) *CachedUserRepository {
+	return &CachedUserRepository{
 		dao:   dao,
 		cache: cmd,
 	}
 }
 
-func (ur *UserRepository) Create(c context.Context, user domain.User) error {
+func (ur *CachedUserRepository) Create(c context.Context, user domain.User) error {
 
 	return ur.dao.Insert(c, dao.UserOfDB{
 		Email: sql.NullString{
@@ -40,13 +47,13 @@ func (ur *UserRepository) Create(c context.Context, user domain.User) error {
 	})
 }
 
-func (ur *UserRepository) FindByEmail(ctx context.Context,
+func (ur *CachedUserRepository) FindByEmail(ctx context.Context,
 	email string) (domain.User, error) {
 	user, err := ur.dao.FindByEmail(ctx, email)
 	return ur.entityToDomain(user), err
 }
 
-func (ur *UserRepository) FindByID(ctx context.Context,
+func (ur *CachedUserRepository) FindByID(ctx context.Context,
 	ID int64) (domain.User, error) {
 	user, err := ur.cache.Get(ctx, ID)
 	if err == nil {
@@ -61,16 +68,31 @@ func (ur *UserRepository) FindByID(ctx context.Context,
 	return user, nil
 }
 
-func (ur *UserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
+func (ur *CachedUserRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
 	user, err := ur.dao.FindByPhone(ctx, phone)
 	return ur.entityToDomain(user), err
 }
 
-func (ur *UserRepository) entityToDomain(ue dao.UserOfDB) domain.User {
+func (ur *CachedUserRepository) entityToDomain(ue dao.UserOfDB) domain.User {
 	return domain.User{
 		Id:       ue.Id,
 		Email:    ue.Email.String,
 		Password: ue.Password,
 		Phone:    ue.Phone.String,
+	}
+}
+
+func (ur *CachedUserRepository) domainToEntity(user domain.User) dao.UserOfDB {
+	return dao.UserOfDB{
+		Id: user.Id,
+		Email: sql.NullString{
+			String: user.Email,
+			Valid:  user.Email != "",
+		},
+		Phone: sql.NullString{
+			String: user.Phone,
+			Valid:  user.Phone != "",
+		},
+		Password: user.Password,
 	}
 }

@@ -19,17 +19,22 @@ var (
 	ErrUnknownForCode         = errors.New("发送验证码遇到未知错误")
 )
 
-type CodeCache struct {
+type CodeCache interface {
+	Set(ctx context.Context, biz, phone, code string) error
+	Verify(ctx context.Context, biz, phone, inputCode string) (bool, error)
+}
+
+type RedisCodeCache struct {
 	cmd redis.Cmdable
 }
 
-func NewCodeCache(cmd redis.Cmdable) *CodeCache {
-	return &CodeCache{
+func NewRedisCodeCache(cmd redis.Cmdable) *RedisCodeCache {
+	return &RedisCodeCache{
 		cmd: cmd,
 	}
 }
 
-func (cc *CodeCache) Set(ctx context.Context,
+func (cc *RedisCodeCache) Set(ctx context.Context,
 	biz, phone, code string) error {
 	result, err := cc.cmd.Eval(ctx, luaSetCode,
 		[]string{cc.key(biz, phone)}, code).Int()
@@ -46,7 +51,7 @@ func (cc *CodeCache) Set(ctx context.Context,
 	}
 }
 
-func (cc *CodeCache) Verify(ctx context.Context,
+func (cc *RedisCodeCache) Verify(ctx context.Context,
 	biz, phone, inputCode string) (bool, error) {
 	result, err := cc.cmd.Eval(ctx, luaVerifyCode, []string{cc.key(biz, phone)}, inputCode).Int()
 	if err != nil {
@@ -62,6 +67,6 @@ func (cc *CodeCache) Verify(ctx context.Context,
 	}
 }
 
-func (cc *CodeCache) key(biz, phone string) string {
+func (cc *RedisCodeCache) key(biz, phone string) string {
 	return fmt.Sprintf("phone_code:%s:%s", biz, phone)
 }
