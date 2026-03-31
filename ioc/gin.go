@@ -5,6 +5,7 @@ import (
 	"time"
 	"user-center/internal/web"
 	"user-center/internal/web/middleware"
+	"user-center/pkg/ginx/middleware/ratelimit"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,7 @@ func InitWebServer(funcs []gin.HandlerFunc,
 
 func GinMiddlwares(cmd redis.Cmdable) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
+		ratelimit.NewBuilder(cmd, time.Minute, 100).Build(),
 		corsHandler(),
 		middleware.NewJWTLoginMiddlewareBuilder().Build(),
 	}

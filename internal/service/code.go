@@ -21,6 +21,7 @@ type CodeService interface {
 type SMSCodeService struct {
 	CodeRepo repository.CodeRepository
 	sms      sms.Service
+	auth     auth.Auth
 }
 
 func NewSMSCodeService(codeRepository repository.CodeRepository, sms sms.Service) *SMSCodeService {
