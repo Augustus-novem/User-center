@@ -67,7 +67,11 @@ func (u *UserHandler) LoginSMS(ctx *gin.Context) {
 		JSONInternalServerError(ctx, "系统错误")
 		return
 	}
-	u.setJWTToken(ctx, user.Id)
+	err = u.setJWTToken(ctx, user.Id)
+	if err != nil {
+		JSONInternalServerError(ctx, "系统异常")
+		return
+	}
 	JSONOK(ctx, "登录成功", nil)
 }
 
@@ -190,11 +194,15 @@ func (u *UserHandler) Login(ctx *gin.Context) {
 		JSONInternalServerError(ctx, "系统错误")
 		return
 	}
-	u.setJWTToken(ctx, user.Id)
+	err = u.setJWTToken(ctx, user.Id)
+	if err != nil {
+		JSONInternalServerError(ctx, "系统异常")
+		return
+	}
 	JSONOK(ctx, "登录成功", nil)
 }
 
-func (u *UserHandler) setJWTToken(ctx *gin.Context, id int64) {
+func (u *UserHandler) setJWTToken(ctx *gin.Context, id int64) error {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, UserClaims{
 		Id:        id,
 		UserAgent: ctx.GetHeader("User-Agent"),
@@ -204,7 +212,8 @@ func (u *UserHandler) setJWTToken(ctx *gin.Context, id int64) {
 	})
 	tokenStr, err := token.SignedString(JWTKey)
 	if err != nil {
-		JSONInternalServerError(ctx, "系统异常")
+		return err
 	}
 	ctx.Header("x-jwt-token", tokenStr)
+	return nil
 }

@@ -3,6 +3,7 @@ module user-center
 go 1.25.1
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/ecodeclub/ekit v0.0.10
 	github.com/gin-contrib/cors v1.7.6
