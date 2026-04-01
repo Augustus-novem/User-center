@@ -17,6 +17,7 @@ import (
 type userServiceStub struct {
 	loginFn        func(ctx context.Context, email, password string) (domain.User, error)
 	findOrCreateFn func(ctx context.Context, phone string) (domain.User, error)
+	findByWechatFn func(ctx context.Context, info domain.SocialAccount) (domain.User, error)
 	signUpFn       func(ctx context.Context, user domain.User) error
 	profileFn      func(ctx context.Context, id int64) (domain.User, error)
 }
@@ -33,6 +34,13 @@ func (s *userServiceStub) FindOrCreate(ctx context.Context, phone string) (domai
 		return domain.User{}, nil
 	}
 	return s.findOrCreateFn(ctx, phone)
+}
+
+func (s *userServiceStub) FindOrCreateByWechat(ctx context.Context, info domain.SocialAccount) (domain.User, error) {
+	if s.findByWechatFn == nil {
+		return domain.User{}, nil
+	}
+	return s.findByWechatFn(ctx, info)
 }
 
 func (s *userServiceStub) SignUp(ctx context.Context, user domain.User) error {

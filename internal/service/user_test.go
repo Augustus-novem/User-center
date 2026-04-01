@@ -13,10 +13,11 @@ import (
 var errDBDown = errors.New("db down")
 
 type userRepoStub struct {
-	createFn      func(ctx context.Context, user domain.User) error
-	findByPhoneFn func(ctx context.Context, phone string) (domain.User, error)
-	findByIDFn    func(ctx context.Context, id int64) (domain.User, error)
-	findByEmailFn func(ctx context.Context, email string) (domain.User, error)
+	createFn          func(ctx context.Context, user domain.User) error
+	createAndReturnFn func(ctx context.Context, user domain.User) (domain.User, error)
+	findByPhoneFn     func(ctx context.Context, phone string) (domain.User, error)
+	findByIDFn        func(ctx context.Context, id int64) (domain.User, error)
+	findByEmailFn     func(ctx context.Context, email string) (domain.User, error)
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user domain.User) error {
@@ -24,6 +25,13 @@ func (s *userRepoStub) Create(ctx context.Context, user domain.User) error {
 		return nil
 	}
 	return s.createFn(ctx, user)
+}
+
+func (s *userRepoStub) CreateAndReturn(ctx context.Context, user domain.User) (domain.User, error) {
+	if s.createAndReturnFn == nil {
+		return domain.User{}, nil
+	}
+	return s.createAndReturnFn(ctx, user)
 }
 
 func (s *userRepoStub) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
@@ -47,6 +55,40 @@ func (s *userRepoStub) FindByEmail(ctx context.Context, email string) (domain.Us
 	return s.findByEmailFn(ctx, email)
 }
 
+type socialRepoStub struct {
+	createFn func(ctx context.Context, sa domain.SocialAccount) error
+	findFn   func(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error)
+}
+
+func (s *socialRepoStub) Create(ctx context.Context, sa domain.SocialAccount) error {
+	if s.createFn == nil {
+		return nil
+	}
+	return s.createFn(ctx, sa)
+}
+
+func (s *socialRepoStub) FindByProviderAndOpenID(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error) {
+	if s.findFn == nil {
+		return domain.SocialAccount{}, nil
+	}
+	return s.findFn(ctx, provider, openID)
+}
+
+type txStub struct {
+	inTxFn func(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+func (s *txStub) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if s.inTxFn == nil {
+		return fn(ctx)
+	}
+	return s.inTxFn(ctx, fn)
+}
+
+func newTestUserService(userRepo repository.UserRepository) *UserServiceImpl {
+	return NewUserServiceImpl(userRepo, &socialRepoStub{}, &txStub{})
+}
+
 func TestUserServiceImpl_SignUp_HashesPasswordBeforeCreate(t *testing.T) {
 	t.Parallel()
 
@@ -65,7 +107,7 @@ func TestUserServiceImpl_SignUp_HashesPasswordBeforeCreate(t *testing.T) {
 			return nil
 		},
 	}
-	svc := NewUserServiceImpl(repo)
+	svc := newTestUserService(repo)
 
 	err := svc.SignUp(context.Background(), domain.User{
 		Email:    "123@qq.com",
@@ -142,7 +184,7 @@ func TestUserServiceImpl_Login(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			svc := NewUserServiceImpl(tc.repo)
+			svc := newTestUserService(tc.repo)
 			user, err := svc.Login(context.Background(), tc.email, tc.pwd)
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
@@ -170,7 +212,7 @@ func TestUserServiceImpl_FindOrCreate(t *testing.T) {
 				return domain.User{Id: 1, Phone: phone}, nil
 			},
 		}
-		svc := NewUserServiceImpl(repo)
+		svc := newTestUserService(repo)
 		user, err := svc.FindOrCreate(context.Background(), "13800138000")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -198,7 +240,7 @@ func TestUserServiceImpl_FindOrCreate(t *testing.T) {
 				return nil
 			},
 		}
-		svc := NewUserServiceImpl(repo)
+		svc := newTestUserService(repo)
 		user, err := svc.FindOrCreate(context.Background(), "13800138001")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -223,7 +265,7 @@ func TestUserServiceImpl_FindOrCreate(t *testing.T) {
 				return repository.ErrUserDuplicate
 			},
 		}
-		svc := NewUserServiceImpl(repo)
+		svc := newTestUserService(repo)
 		user, err := svc.FindOrCreate(context.Background(), "13800138002")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -243,10 +285,130 @@ func TestUserServiceImpl_FindOrCreate(t *testing.T) {
 				return errors.New("db write failed")
 			},
 		}
-		svc := NewUserServiceImpl(repo)
+		svc := newTestUserService(repo)
 		_, err := svc.FindOrCreate(context.Background(), "13800138003")
 		if err == nil || err.Error() != "db write failed" {
 			t.Fatalf("want db write failed, got %v", err)
+		}
+	})
+}
+
+func TestUserServiceImpl_FindOrCreateByWechat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("existing social account returns existing user", func(t *testing.T) {
+		t.Parallel()
+		userRepo := &userRepoStub{
+			findByIDFn: func(ctx context.Context, id int64) (domain.User, error) {
+				if id != 99 {
+					t.Fatalf("unexpected user id: %d", id)
+				}
+				return domain.User{Id: 99, Email: "wx@qq.com"}, nil
+			},
+		}
+		socialRepo := &socialRepoStub{
+			findFn: func(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error) {
+				if provider != domain.OAuthProviderWechat || openID != "openid-1" {
+					t.Fatalf("unexpected provider/openid: %s %s", provider, openID)
+				}
+				return domain.SocialAccount{UserId: 99}, nil
+			},
+		}
+		tx := &txStub{inTxFn: func(ctx context.Context, fn func(ctx context.Context) error) error {
+			t.Fatal("transaction should not be opened for existing social account")
+			return nil
+		}}
+		svc := NewUserServiceImpl(userRepo, socialRepo, tx)
+
+		user, err := svc.FindOrCreateByWechat(context.Background(), domain.SocialAccount{OpenId: "openid-1"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user.Id != 99 {
+			t.Fatalf("want id 99, got %d", user.Id)
+		}
+	})
+
+	t.Run("create new user and social account in transaction", func(t *testing.T) {
+		t.Parallel()
+		calledCreateSocial := false
+		userRepo := &userRepoStub{
+			createAndReturnFn: func(ctx context.Context, user domain.User) (domain.User, error) {
+				if user != (domain.User{}) {
+					t.Fatalf("wechat first-login should create empty local user, got %+v", user)
+				}
+				return domain.User{Id: 123}, nil
+			},
+		}
+		socialRepo := &socialRepoStub{
+			findFn: func(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error) {
+				return domain.SocialAccount{}, repository.ErrSocialAccountNotFound
+			},
+			createFn: func(ctx context.Context, sa domain.SocialAccount) error {
+				calledCreateSocial = true
+				if sa.UserId != 123 {
+					t.Fatalf("want social account bind to user 123, got %d", sa.UserId)
+				}
+				if sa.Provider != domain.OAuthProviderWechat || sa.OpenId != "openid-2" || sa.UnionId != "union-2" {
+					t.Fatalf("unexpected social account: %+v", sa)
+				}
+				return nil
+			},
+		}
+		tx := &txStub{inTxFn: func(ctx context.Context, fn func(ctx context.Context) error) error {
+			return fn(ctx)
+		}}
+		svc := NewUserServiceImpl(userRepo, socialRepo, tx)
+
+		user, err := svc.FindOrCreateByWechat(context.Background(), domain.SocialAccount{
+			OpenId:  "openid-2",
+			UnionId: "union-2",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user.Id != 123 {
+			t.Fatalf("want id 123, got %d", user.Id)
+		}
+		if !calledCreateSocial {
+			t.Fatal("social account should be created inside transaction")
+		}
+	})
+
+	t.Run("social repository unexpected error bubbles up", func(t *testing.T) {
+		t.Parallel()
+		svc := NewUserServiceImpl(&userRepoStub{}, &socialRepoStub{
+			findFn: func(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error) {
+				return domain.SocialAccount{}, errDBDown
+			},
+		}, &txStub{})
+
+		_, err := svc.FindOrCreateByWechat(context.Background(), domain.SocialAccount{OpenId: "openid-3"})
+		if !errors.Is(err, errDBDown) {
+			t.Fatalf("want err %v, got %v", errDBDown, err)
+		}
+	})
+
+	t.Run("social account create error rolls back transaction", func(t *testing.T) {
+		t.Parallel()
+		svc := NewUserServiceImpl(&userRepoStub{
+			createAndReturnFn: func(ctx context.Context, user domain.User) (domain.User, error) {
+				return domain.User{Id: 321}, nil
+			},
+		}, &socialRepoStub{
+			findFn: func(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error) {
+				return domain.SocialAccount{}, repository.ErrSocialAccountNotFound
+			},
+			createFn: func(ctx context.Context, sa domain.SocialAccount) error {
+				return errors.New("bind social account failed")
+			},
+		}, &txStub{inTxFn: func(ctx context.Context, fn func(ctx context.Context) error) error {
+			return fn(ctx)
+		}})
+
+		_, err := svc.FindOrCreateByWechat(context.Background(), domain.SocialAccount{OpenId: "openid-4"})
+		if err == nil || err.Error() != "bind social account failed" {
+			t.Fatalf("want bind social account failed, got %v", err)
 		}
 	})
 }

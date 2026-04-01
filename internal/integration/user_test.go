@@ -15,6 +15,7 @@ import (
 	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
 	"user-center/internal/service"
+	wechatsvc "user-center/internal/service/oauth2/wechat"
 	"user-center/internal/web"
 	"user-center/ioc"
 
@@ -45,14 +46,18 @@ func mustInitWebServer(t *testing.T) (*gin.Engine, *redis.Client) {
 		}()
 		gdb := ioc.InitDB()
 		userDAO := dao.NewGORMUserDAO(gdb)
+		socialDAO := dao.NewGormSocialAccountDAO(gdb)
 		userCache := cache.NewRedisUserCache(rdb)
 		codeCache := cache.NewRedisCodeCache(rdb)
 		userRepo := repository.NewCachedUserRepository(userDAO, userCache)
+		socialRepo := repository.NewSocialAccountRepositoryImpl(socialDAO)
 		codeRepo := repository.NewCachedCodeRepository(codeCache)
-		userSvc := service.NewUserServiceImpl(userRepo)
+		tx := ioc.InitTX(gdb)
+		userSvc := service.NewUserServiceImpl(userRepo, socialRepo, tx)
 		codeSvc := service.NewSMSCodeService(codeRepo, ioc.InitSmsMemoryService())
 		hdl := web.NewUserHandler(userSvc, codeSvc)
-		server = ioc.InitWebServer(ioc.GinMiddlwares(rdb), hdl)
+		oauth2Hdl := web.NewOAuth2WechatHandler(wechatsvc.NewService("test-app-id", "test-app-secret"), userSvc)
+		server = ioc.InitWebServer(ioc.GinMiddlwares(rdb), hdl, oauth2Hdl)
 		db = gdb
 	}()
 	_ = db

@@ -2,13 +2,11 @@ package web
 
 import (
 	"errors"
-	"time"
 	"user-center/internal/domain"
 	"user-center/internal/service"
 
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -22,6 +20,7 @@ type UserHandler struct {
 	codeSvc          service.CodeService
 	emailRegexExp    *regexp.Regexp
 	passwordRegexExp *regexp.Regexp
+	jwtHandler
 }
 
 func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserHandler {
@@ -200,20 +199,4 @@ func (u *UserHandler) Login(ctx *gin.Context) {
 		return
 	}
 	JSONOK(ctx, "登录成功", nil)
-}
-
-func (u *UserHandler) setJWTToken(ctx *gin.Context, id int64) error {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, UserClaims{
-		Id:        id,
-		UserAgent: ctx.GetHeader("User-Agent"),
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30)),
-		},
-	})
-	tokenStr, err := token.SignedString(JWTKey)
-	if err != nil {
-		return err
-	}
-	ctx.Header("x-jwt-token", tokenStr)
-	return nil
 }

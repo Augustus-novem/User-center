@@ -17,7 +17,7 @@ import (
 func InitWebServer() *gin.Engine {
 	wire.Build(
 		//基础部分
-		ioc.InitDB, ioc.InitRedis, ioc.InitSmsService,
+		ioc.InitDB, ioc.InitRedis, ioc.InitSmsService, ioc.InitWechatService, ioc.InitTX,
 		// DAO 部分
 		dao.DAOSet,
 		cache.CacheSet,
@@ -25,6 +25,7 @@ func InitWebServer() *gin.Engine {
 		service.ServiceSet,
 
 		web.NewUserHandler,
+		web.NewOAuth2WechatHandler,
 		ioc.GinMiddlwares,
 		ioc.InitWebServer,
 	)

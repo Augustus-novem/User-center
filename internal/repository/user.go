@@ -15,6 +15,7 @@ var (
 
 type UserRepository interface {
 	Create(ctx context.Context, user domain.User) error
+	CreateAndReturn(ctx context.Context, u domain.User) (domain.User, error)
 	FindByPhone(ctx context.Context, phone string) (domain.User, error)
 	FindByID(ctx context.Context, id int64) (domain.User, error)
 	FindByEmail(ctx context.Context, email string) (domain.User, error)
@@ -30,6 +31,25 @@ func NewCachedUserRepository(dao dao.UserDAO, cmd cache.UserCache) *CachedUserRe
 		dao:   dao,
 		cache: cmd,
 	}
+}
+
+func (ur *CachedUserRepository) CreateAndReturn(ctx context.Context, u domain.User) (domain.User, error) {
+	entity := dao.UserOfDB{
+		Email: sql.NullString{
+			String: u.Email,
+			Valid:  u.Email != "",
+		},
+		Phone: sql.NullString{
+			String: u.Phone,
+			Valid:  u.Phone != "",
+		},
+		Password: u.Password,
+	}
+	err := ur.dao.InsertAndReturn(ctx, &entity)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return ur.entityToDomain(entity), nil
 }
 
 func (ur *CachedUserRepository) Create(c context.Context, user domain.User) error {

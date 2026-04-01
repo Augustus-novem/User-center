@@ -11,6 +11,7 @@ import (
 
 type userDAOStub struct {
 	insertFn      func(ctx context.Context, user dao.UserOfDB) error
+	insertRetFn   func(ctx context.Context, user *dao.UserOfDB) error
 	findByEmailFn func(ctx context.Context, email string) (dao.UserOfDB, error)
 	findByIDFn    func(ctx context.Context, id int64) (dao.UserOfDB, error)
 	findByPhoneFn func(ctx context.Context, phone string) (dao.UserOfDB, error)
@@ -21,6 +22,13 @@ func (s *userDAOStub) Insert(ctx context.Context, user dao.UserOfDB) error {
 		return nil
 	}
 	return s.insertFn(ctx, user)
+}
+
+func (s *userDAOStub) InsertAndReturn(ctx context.Context, user *dao.UserOfDB) error {
+	if s.insertRetFn == nil {
+		return nil
+	}
+	return s.insertRetFn(ctx, user)
 }
 
 func (s *userDAOStub) FindByEmail(ctx context.Context, email string) (dao.UserOfDB, error) {
