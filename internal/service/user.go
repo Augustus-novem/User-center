@@ -90,10 +90,17 @@ func (us *UserServiceImpl) FindOrCreateByWechat(ctx context.Context, info domain
 		}
 		return nil // 一切顺利，自动提交！
 	})
-	if err != nil {
-		return domain.User{}, err
+	if err == nil {
+		return newUser, nil
 	}
-	return newUser, nil
+	if errors.Is(err, repository.ErrSocialAccountDuplicated) {
+		account, err := us.SocialRepo.FindByProviderAndOpenID(ctx, domain.OAuthProviderWechat, info.OpenId)
+		if err != nil {
+			return domain.User{}, err
+		}
+		return us.UserRepo.FindByID(ctx, account.UserId)
+	}
+	return domain.User{}, err
 }
 
 func (us *UserServiceImpl) Login(c context.Context,

@@ -2,12 +2,17 @@ package dao
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 )
 
-var ErrAccountNotFound = gorm.ErrRecordNotFound
+var (
+	ErrAccountNotFound   = gorm.ErrRecordNotFound
+	ErrAccountDuplicated = errors.New("唯一索引冲突")
+)
 
 type SocialAccountDAO interface {
 	Insert(ctx context.Context, sa SocialAccountOfDB) error
@@ -29,7 +34,15 @@ func (dao *GORMSocialAccountDAO) Insert(ctx context.Context, sa SocialAccountOfD
 	now := time.Now().UnixMilli()
 	sa.Ctime = now
 	sa.Utime = now
-	return dbFromCtx(ctx, dao.db).Create(&sa).Error
+	err := dbFromCtx(ctx, dao.db).Create(&sa).Error
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		const uniqueIndexErrNo uint16 = 1062
+		if mysqlErr.Number == uniqueIndexErrNo {
+			return ErrAccountDuplicated
+		}
+	}
+	return err
 }
 
 func (dao *GORMSocialAccountDAO) FindByProviderAndOpenID(ctx context.Context, provider string, openID string) (SocialAccountOfDB, error) {

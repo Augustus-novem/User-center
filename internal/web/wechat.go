@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"fmt"
+	"time"
 	"user-center/internal/service"
 	"user-center/internal/service/oauth2/wechat"
 
@@ -96,6 +97,9 @@ func (h *OAuth2WechatHandler) verifyState(ctx *gin.Context) error {
 func (h *OAuth2WechatHandler) setStateCookie(ctx *gin.Context, state string) error {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, StateClaims{
 		State: state,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 10)),
+		},
 	})
 	tokenStr, err := token.SignedString(JWTKey)
 	if err != nil {

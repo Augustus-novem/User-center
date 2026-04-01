@@ -411,4 +411,105 @@ func TestUserServiceImpl_FindOrCreateByWechat(t *testing.T) {
 			t.Fatalf("want bind social account failed, got %v", err)
 		}
 	})
+	t.Run("duplicate social account then query existing user", func(t *testing.T) {
+		t.Parallel()
+
+		findCalls := 0
+		userRepo := &userRepoStub{
+			createAndReturnFn: func(ctx context.Context, user domain.User) (domain.User, error) {
+				return domain.User{Id: 111}, nil
+			},
+			findByIDFn: func(ctx context.Context, id int64) (domain.User, error) {
+				if id != 999 {
+					t.Fatalf("want query existing user id 999, got %d", id)
+				}
+				return domain.User{Id: 999, Email: "existing@qq.com"}, nil
+			},
+		}
+		socialRepo := &socialRepoStub{
+			findFn: func(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error) {
+				findCalls++
+				if provider != domain.OAuthProviderWechat {
+					t.Fatalf("unexpected provider: %v", provider)
+				}
+				if openID != "openid-dup" {
+					t.Fatalf("unexpected openid: %s", openID)
+				}
+				// 第一次查：还没绑定
+				if findCalls == 1 {
+					return domain.SocialAccount{}, repository.ErrSocialAccountNotFound
+				}
+				// 第二次查：并发下别人已经创建好了绑定
+				return domain.SocialAccount{
+					UserId:   999,
+					Provider: domain.OAuthProviderWechat,
+					OpenId:   "openid-dup",
+					UnionId:  "union-dup",
+				}, nil
+			},
+			createFn: func(ctx context.Context, sa domain.SocialAccount) error {
+				if sa.UserId != 111 {
+					t.Fatalf("want new created user id 111, got %d", sa.UserId)
+				}
+				if sa.Provider != domain.OAuthProviderWechat || sa.OpenId != "openid-dup" || sa.UnionId != "union-dup" {
+					t.Fatalf("unexpected social account: %+v", sa)
+				}
+				// 模拟并发下唯一索引冲突
+				return repository.ErrSocialAccountDuplicated
+			},
+		}
+		tx := &txStub{
+			inTxFn: func(ctx context.Context, fn func(ctx context.Context) error) error {
+				return fn(ctx)
+			},
+		}
+
+		svc := NewUserServiceImpl(userRepo, socialRepo, tx)
+
+		user, err := svc.FindOrCreateByWechat(context.Background(), domain.SocialAccount{
+			OpenId:  "openid-dup",
+			UnionId: "union-dup",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user.Id != 999 {
+			t.Fatalf("want existing user id 999, got %d", user.Id)
+		}
+		if findCalls != 2 {
+			t.Fatalf("want find social account called twice, got %d", findCalls)
+		}
+	})
+	t.Run("duplicate social account but requery fails", func(t *testing.T) {
+		t.Parallel()
+
+		findCalls := 0
+		svc := NewUserServiceImpl(&userRepoStub{
+			createAndReturnFn: func(ctx context.Context, user domain.User) (domain.User, error) {
+				return domain.User{Id: 111}, nil
+			},
+		}, &socialRepoStub{
+			findFn: func(ctx context.Context, provider domain.OAuthProvider, openID string) (domain.SocialAccount, error) {
+				findCalls++
+				if findCalls == 1 {
+					return domain.SocialAccount{}, repository.ErrSocialAccountNotFound
+				}
+				return domain.SocialAccount{}, errDBDown
+			},
+			createFn: func(ctx context.Context, sa domain.SocialAccount) error {
+				return repository.ErrSocialAccountDuplicated
+			},
+		}, &txStub{
+			inTxFn: func(ctx context.Context, fn func(ctx context.Context) error) error {
+				return fn(ctx)
+			},
+		})
+
+		_, err := svc.FindOrCreateByWechat(context.Background(), domain.SocialAccount{
+			OpenId: "openid-dup-2",
+		})
+		if !errors.Is(err, errDBDown) {
+			t.Fatalf("want err %v, got %v", errDBDown, err)
+		}
+	})
 }

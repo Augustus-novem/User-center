@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	ErrSocialAccountNotFound = dao.ErrAccountNotFound
+	ErrSocialAccountNotFound   = dao.ErrAccountNotFound
+	ErrSocialAccountDuplicated = dao.ErrAccountDuplicated
 )
 
 type SocialAccountRepository interface {
