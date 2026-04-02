@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 	"user-center/internal/web"
+	jwt2 "user-center/internal/web/jwt"
 	"user-center/internal/web/middleware"
 	"user-center/pkg/ginx/middleware/ratelimit"
 
@@ -21,11 +22,11 @@ func InitWebServer(funcs []gin.HandlerFunc,
 	return server
 }
 
-func GinMiddlwares(cmd redis.Cmdable) []gin.HandlerFunc {
+func GinMiddlwares(cmd redis.Cmdable, hdl jwt2.Handler) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		ratelimit.NewBuilder(cmd, time.Minute, 100).Build(),
 		corsHandler(),
-		middleware.NewJWTLoginMiddlewareBuilder().Build(),
+		middleware.NewJWTLoginMiddlewareBuilder(hdl).Build(),
 	}
 }
 
@@ -33,8 +34,15 @@ func corsHandler() gin.HandlerFunc {
 	return cors.New(
 		cors.Config{
 			AllowCredentials: true,
-			AllowHeaders:     []string{"Content-Type", "Authorization"},
-			ExposeHeaders:    []string{"x-jwt-token"},
+			AllowHeaders: []string{
+				"Content-Type",
+				"Authorization",
+				"X-Refresh-Token",
+			},
+			ExposeHeaders: []string{
+				"x-jwt-token",
+				"x-refresh-token",
+			},
 			AllowOriginFunc: func(origin string) bool {
 				if strings.HasPrefix(origin, "http://localhost") {
 					return true

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"user-center/internal/domain"
 	"user-center/internal/service"
+	jwt2 "user-center/internal/web/jwt"
 
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-gonic/gin"
@@ -20,13 +21,14 @@ type UserHandler struct {
 	codeSvc          service.CodeService
 	emailRegexExp    *regexp.Regexp
 	passwordRegexExp *regexp.Regexp
-	jwtHandler
+	jwt2.Handler
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeService) *UserHandler {
+func NewUserHandler(svc service.UserService, codeSvc service.CodeService, jwtHdl jwt2.Handler) *UserHandler {
 	return &UserHandler{
 		svc:              svc,
 		codeSvc:          codeSvc,
+		Handler:          jwtHdl,
 		emailRegexExp:    regexp.MustCompile(emailRegexPattern, regexp.None),
 		passwordRegexExp: regexp.MustCompile(passwordRegexPattern, regexp.None),
 	}
@@ -37,9 +39,28 @@ func (u *UserHandler) RegisterRoutes(server *gin.Engine) {
 	ug.GET("/profile", u.Profile)
 	ug.POST("/signup", u.Signup)
 	ug.POST("/login", u.Login)
+	ug.POST("/logout", u.Logout)
 	ug.POST("/edit", u.Edit)
 	ug.POST("/login_sms", u.LoginSMS)
 	ug.POST("/login_sms/code/send", u.SendSMSLoginCode)
+	ug.POST("/refresh_token", u.RefreshToken)
+}
+
+func (u *UserHandler) Logout(ctx *gin.Context) {
+	err := u.ClearToken(ctx)
+	if err != nil {
+		JSONInternalServerError(ctx, "系统错误")
+	}
+	JSONOK(ctx, "退出登录", nil)
+}
+
+func (u *UserHandler) RefreshToken(ctx *gin.Context) {
+	err := u.Refresh(ctx)
+	if err != nil {
+		JSONUnauthorized(ctx, "请登录")
+		return
+	}
+	JSONOK(ctx, "刷新成功", nil)
 }
 
 func (u *UserHandler) LoginSMS(ctx *gin.Context) {
@@ -66,7 +87,7 @@ func (u *UserHandler) LoginSMS(ctx *gin.Context) {
 		JSONInternalServerError(ctx, "系统错误")
 		return
 	}
-	err = u.setJWTToken(ctx, user.Id)
+	err = u.SetLoginToken(ctx, user.Id)
 	if err != nil {
 		JSONInternalServerError(ctx, "系统异常")
 		return
@@ -155,7 +176,7 @@ func (u *UserHandler) Profile(ctx *gin.Context) {
 		JSONUnauthorized(ctx, "请先登录")
 		return
 	}
-	uc := val.(UserClaims)
+	uc := val.(jwt2.UserClaims)
 	user, err := u.svc.Profile(ctx.Request.Context(), uc.Id)
 	if err != nil {
 		JSONInternalServerError(ctx, "系统错误")
@@ -193,7 +214,7 @@ func (u *UserHandler) Login(ctx *gin.Context) {
 		JSONInternalServerError(ctx, "系统错误")
 		return
 	}
-	err = u.setJWTToken(ctx, user.Id)
+	err = u.SetLoginToken(ctx, user.Id)
 	if err != nil {
 		JSONInternalServerError(ctx, "系统异常")
 		return

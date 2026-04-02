@@ -45,11 +45,11 @@ func (ur *CachedUserRepository) CreateAndReturn(ctx context.Context, u domain.Us
 		},
 		Password: u.Password,
 	}
-	err := ur.dao.InsertAndReturn(ctx, &entity)
+	user, err := ur.dao.InsertAndReturn(ctx, entity)
 	if err != nil {
 		return domain.User{}, err
 	}
-	return ur.entityToDomain(entity), nil
+	return ur.entityToDomain(user), nil
 }
 
 func (ur *CachedUserRepository) Create(c context.Context, user domain.User) error {

@@ -20,7 +20,7 @@ type UserDAO interface {
 	FindByEmail(ctx context.Context, email string) (UserOfDB, error)
 	FindById(ctx context.Context, id int64) (UserOfDB, error)
 	FindByPhone(ctx context.Context, phone string) (UserOfDB, error)
-	InsertAndReturn(ctx context.Context, u *UserOfDB) error
+	InsertAndReturn(ctx context.Context, u UserOfDB) (UserOfDB, error)
 }
 
 type GORMUserDAO struct {
@@ -34,21 +34,23 @@ func NewGORMUserDAO(db *gorm.DB) *GORMUserDAO {
 }
 
 func (ud *GORMUserDAO) Insert(ctx context.Context, user UserOfDB) error {
-	user.Ctime = time.Now().UnixMilli()
-	user.Utime = time.Now().UnixMilli()
+	_, err := ud.InsertAndReturn(ctx, user)
+	return err
+}
+
+func (ud *GORMUserDAO) InsertAndReturn(ctx context.Context, user UserOfDB) (UserOfDB, error) {
+	now := time.Now().UnixMilli()
+	user.Ctime = now
+	user.Utime = now
 	err := dbFromCtx(ctx, ud.db).Create(&user).Error
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) {
 		const uniqueIndexErrNo uint16 = 1062
 		if mysqlErr.Number == uniqueIndexErrNo {
-			return ErrUserDuplicate
+			return user, ErrUserDuplicate
 		}
 	}
-	return err
-}
-
-func (ud *GORMUserDAO) InsertAndReturn(ctx context.Context, u *UserOfDB) error {
-	return dbFromCtx(ctx, ud.db).Create(u).Error
+	return user, err
 }
 
 func (ud *GORMUserDAO) FindByEmail(ctx context.Context, email string) (UserOfDB, error) {

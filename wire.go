@@ -8,6 +8,7 @@ import (
 	"user-center/internal/repository/dao"
 	"user-center/internal/service"
 	"user-center/internal/web"
+	jwt2 "user-center/internal/web/jwt"
 	"user-center/ioc"
 
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,7 @@ func InitWebServer() *gin.Engine {
 		repository.RepoSet,
 		service.ServiceSet,
 
+		jwt2.NewRedisHandler,
 		web.NewUserHandler,
 		web.NewOAuth2WechatHandler,
 		ioc.GinMiddlwares,

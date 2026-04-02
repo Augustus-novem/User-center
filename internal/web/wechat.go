@@ -6,25 +6,32 @@ import (
 	"time"
 	"user-center/internal/service"
 	"user-center/internal/service/oauth2/wechat"
+	jwt2 "user-center/internal/web/jwt"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
+var stateTokenKey = []byte("REnqEpucqg3KNDgWrLkyaKiZYnD6R1b9v8PpTSIxlox")
+
 type OAuth2WechatHandler struct {
 	wechatSvc       wechat.Service
 	userSvc         service.UserService
 	stateCookieName string
-	jwtHandler
+	stateTokenKey   []byte
+	jwt2.Handler
 }
 
 func NewOAuth2WechatHandler(service wechat.Service,
-	userSvc service.UserService) *OAuth2WechatHandler {
+	userSvc service.UserService,
+	jwtHdl jwt2.Handler) *OAuth2WechatHandler {
 	return &OAuth2WechatHandler{
 		wechatSvc:       service,
 		userSvc:         userSvc,
+		Handler:         jwtHdl,
 		stateCookieName: "jwt-state",
+		stateTokenKey:   stateTokenKey,
 	}
 }
 
@@ -67,7 +74,7 @@ func (h *OAuth2WechatHandler) CallBack(ctx *gin.Context) {
 		JSONInternalServerError(ctx, "系统错误")
 		return
 	}
-	err = h.setJWTToken(ctx, user.Id)
+	err = h.SetLoginToken(ctx, user.Id)
 	if err != nil {
 		JSONInternalServerError(ctx, "系统错误")
 		return
@@ -83,7 +90,7 @@ func (h *OAuth2WechatHandler) verifyState(ctx *gin.Context) error {
 	}
 	var sc StateClaims
 	_, err = jwt.ParseWithClaims(tokenStr, &sc, func(token *jwt.Token) (interface{}, error) {
-		return JWTKey, nil
+		return h.stateTokenKey, nil
 	})
 	if err != nil {
 		return fmt.Errorf("%w, cookie 不是合法 JWT token", err)
@@ -101,7 +108,7 @@ func (h *OAuth2WechatHandler) setStateCookie(ctx *gin.Context, state string) err
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 10)),
 		},
 	})
-	tokenStr, err := token.SignedString(JWTKey)
+	tokenStr, err := token.SignedString(h.stateTokenKey)
 	if err != nil {
 		return err
 	}
@@ -110,4 +117,9 @@ func (h *OAuth2WechatHandler) setStateCookie(ctx *gin.Context, state string) err
 		"/oauth2/wechat/callback",
 		"", false, true)
 	return nil
+}
+
+type StateClaims struct {
+	State string
+	jwt.RegisteredClaims
 }

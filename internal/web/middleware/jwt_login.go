@@ -2,9 +2,8 @@ package middleware
 
 import (
 	"net/http"
-	"strings"
 	"time"
-	"user-center/internal/web"
+	jwt2 "user-center/internal/web/jwt"
 
 	"github.com/ecodeclub/ekit/set"
 	"github.com/gin-gonic/gin"
@@ -13,16 +12,21 @@ import (
 
 type JWTLoginMiddlewareBuilder struct {
 	publicPaths set.Set[string]
+	jwt2.Handler
 }
 
-func NewJWTLoginMiddlewareBuilder() *JWTLoginMiddlewareBuilder {
+func NewJWTLoginMiddlewareBuilder(hdl jwt2.Handler) *JWTLoginMiddlewareBuilder {
 	s := set.NewMapSet[string](2)
-	s.Add("/user/login")
 	s.Add("/user/signup")
-	s.Add("/user/login_sms")
 	s.Add("/user/login_sms/code/send")
+	s.Add("/user/login_sms")
+	s.Add("/user/refresh_token")
+	s.Add("/user/login")
+	s.Add("/oauth2/wechat/authurl")
+	s.Add("/oauth2/wechat/callback")
 	return &JWTLoginMiddlewareBuilder{
 		publicPaths: s,
+		Handler:     hdl,
 	}
 }
 
@@ -31,25 +35,15 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 		if j.publicPaths.Exist(ctx.Request.URL.Path) {
 			return
 		}
-		authCode := ctx.Request.Header.Get("Authorization")
-		if authCode == "" {
-			ctx.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-		authSegments := strings.SplitN(authCode, " ", 2)
-		if len(authSegments) != 2 || authSegments[0] != "Bearer" {
-			ctx.AbortWithStatus(http.StatusUnauthorized)
-			return
-		}
-		tokenStr := authSegments[1]
-		uc := web.UserClaims{}
+		tokenStr := j.ExtractAccessTokenString(ctx)
+		uc := jwt2.UserClaims{}
 		token, err := jwt.ParseWithClaims(tokenStr,
 			&uc, func(token *jwt.Token) (interface{}, error) {
-				return web.JWTKey, nil
+				return jwt2.AccessTokenKey, nil
 			},
 			jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
 		)
-		if err != nil || !token.Valid {
+		if err != nil || token == nil || !token.Valid {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
@@ -63,13 +57,10 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		if expireAt.Sub(now) < time.Minute*10 {
-			uc.ExpiresAt = jwt.NewNumericDate(now.Add(time.Minute * 15))
-			newToken := jwt.NewWithClaims(jwt.SigningMethodHS256, uc)
-			newTokenStr, err := newToken.SignedString(web.JWTKey)
-			if err == nil {
-				ctx.Header("x-jwt-token", newTokenStr)
-			}
+		err = j.CheckSession(ctx, uc.Ssid)
+		if err != nil {
+			ctx.AbortWithStatus(http.StatusUnauthorized)
+			return
 		}
 		ctx.Set("user", uc)
 	}
