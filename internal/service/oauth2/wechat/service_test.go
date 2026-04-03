@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"user-center/internal/domain"
@@ -19,12 +20,13 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestService_AuthURL(t *testing.T) {
 	t.Parallel()
 
-	svc := &service{appId: "appid-123"}
+	redirect := "http://localhost:8081/oauth2/wechat/callback"
+	svc := NewService("appid-123", "secret-456", redirect).(*service)
 	got, err := svc.AuthURL(context.Background(), "state-xyz")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	want := "https://open.weixin.qq.com/connect/qrconnect?appid=appid-123&redirect_uri=" + redirectURL + "&response_type=code&scope=snsapi_login&state=state-xyz#wechat_redirect"
+	want := "https://open.weixin.qq.com/connect/qrconnect?appid=appid-123&redirect_uri=" + url.PathEscape(redirect) + "&response_type=code&scope=snsapi_login&state=state-xyz#wechat_redirect"
 	if got != want {
 		t.Fatalf("want %s, got %s", want, got)
 	}

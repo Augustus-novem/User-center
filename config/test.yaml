@@ -1,0 +1,71 @@
+server:
+  name: user-center
+  port: 8082
+  mode: test
+
+db:
+  dsn: root:root@tcp(localhost:13316)/user_center_test?charset=utf8mb4&parseTime=True&loc=Local
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 2
+
+jwt:
+  access_token_key: test-access-token-key-please-change
+  refresh_token_key: test-refresh-token-key-please-change
+  access_token_ttl: 15m
+  refresh_token_ttl: 24h
+  idle_timeout: 24h
+  absolute_timeout: 168h
+
+wechat:
+  app_id: test-app-id
+  app_key: test-app-key
+  redirect_url: http://localhost:8082/oauth2/wechat/callback
+  state_cookie_name: jwt-state
+  state_token_key: test-wechat-state-token-key
+  state_token_ttl: 10m
+  state_cookie_path: /oauth2/wechat/callback
+
+cors:
+  allow_credentials: true
+  allow_origins:
+    - http://localhost:3000
+  allow_methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+  allow_headers:
+    - Content-Type
+    - Authorization
+    - X-Refresh-Token
+  expose_headers:
+    - x-jwt-token
+    - x-refresh-token
+  max_age: 1h
+
+ratelimit:
+  enabled: true
+  prefix: ip-limiter-test
+  interval: 1m
+  limit: 100
+
+log:
+  level: debug
+  encoding: console
+  output_paths:
+    - stdout
+  error_output_paths:
+    - stderr
+  disable_caller: false
+  disable_stacktrace: false
+  development: true
+
+feature:
+  enable_wechat_login: false
+  enable_sms_login: true
+  enable_debug_log: true

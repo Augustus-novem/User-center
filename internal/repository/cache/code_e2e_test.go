@@ -1,11 +1,12 @@
+//go:build e2e
+
 package cache
 
 import (
 	"context"
 	"testing"
 	"time"
-
-	"user-center/config"
+	"user-center/internal/config"
 
 	"github.com/redis/go-redis/v9"
 )

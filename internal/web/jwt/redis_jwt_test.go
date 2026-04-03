@@ -8,11 +8,23 @@ import (
 	"sync"
 	"testing"
 	"time"
+	appconfig "user-center/internal/config"
 
 	"github.com/gin-gonic/gin"
 	gjwt "github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
 )
+
+func testJWTConfig() appconfig.JWTConfig {
+	return appconfig.JWTConfig{
+		AccessTokenKey:  "access-secret-for-test",
+		RefreshTokenKey: "refresh-secret-for-test",
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 24 * time.Hour,
+		IdleTimeout:     24 * time.Hour,
+		AbsoluteTimeout: 7 * 24 * time.Hour,
+	}
+}
 
 type fakeRedisValue struct {
 	val      string
@@ -147,7 +159,7 @@ func newTestRedisHandler(t *testing.T) (*RedisHandler, *fakeRedis) {
 	gin.SetMode(gin.TestMode)
 
 	cmd := newFakeRedis()
-	h := NewRedisHandler(cmd)
+	h := NewRedisHandlerWithConfig(cmd, testJWTConfig())
 	return h, cmd
 }
 
@@ -169,7 +181,7 @@ func mustRefreshToken(t *testing.T, uid int64, ssid, jti string, ttl time.Durati
 			ExpiresAt: gjwt.NewNumericDate(time.Now().Add(ttl)),
 		},
 	})
-	tokenStr, err := token.SignedString(RefreshTokenKey)
+	tokenStr, err := token.SignedString([]byte(testJWTConfig().RefreshTokenKey))
 	if err != nil {
 		t.Fatalf("sign refresh token: %v", err)
 	}
@@ -180,7 +192,7 @@ func mustParseRefreshToken(t *testing.T, tokenStr string) RefreshClaims {
 	t.Helper()
 	var rc RefreshClaims
 	token, err := gjwt.ParseWithClaims(tokenStr, &rc, func(token *gjwt.Token) (interface{}, error) {
-		return RefreshTokenKey, nil
+		return []byte(testJWTConfig().RefreshTokenKey), nil
 	}, gjwt.WithValidMethods([]string{gjwt.SigningMethodHS256.Alg()}))
 	if err != nil || token == nil || !token.Valid {
 		t.Fatalf("parse refresh token failed: %v", err)
@@ -192,7 +204,7 @@ func mustParseAccessToken(t *testing.T, tokenStr string) UserClaims {
 	t.Helper()
 	var uc UserClaims
 	token, err := gjwt.ParseWithClaims(tokenStr, &uc, func(token *gjwt.Token) (interface{}, error) {
-		return AccessTokenKey, nil
+		return []byte(testJWTConfig().AccessTokenKey), nil
 	}, gjwt.WithValidMethods([]string{gjwt.SigningMethodHS256.Alg()}))
 	if err != nil || token == nil || !token.Valid {
 		t.Fatalf("parse access token failed: %v", err)
@@ -232,8 +244,8 @@ func TestRedisHandler_ClearToken(t *testing.T) {
 		t.Fatalf("want empty x-jwt-token, got %q", got)
 	}
 	// 注意：这里按你当前生产代码里的拼写来断言
-	if got := recorder.Header().Get("x-refersh-token"); got != "" {
-		t.Fatalf("want empty x-refersh-token, got %q", got)
+	if got := recorder.Header().Get("x-refresh-token"); got != "" {
+		t.Fatalf("want empty x-refresh-token, got %q", got)
 	}
 
 	if _, ok := fake.get(h.refreshKey(ssid)); ok {

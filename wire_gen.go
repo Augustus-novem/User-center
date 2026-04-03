@@ -8,6 +8,7 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
+	"user-center/internal/config"
 	"user-center/internal/repository"
 	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
@@ -18,10 +19,11 @@ import (
 
 // Injectors from wire.go:
 
-func InitWebServer() *gin.Engine {
-	cmdable := ioc.InitRedis()
-	v := ioc.GinMiddlwares(cmdable)
-	db := ioc.InitDB()
+func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider) *gin.Engine {
+	cmdable := ioc.InitRedis(cfg)
+	handler := ioc.InitJWTHandler(cfg, cmdable)
+	v := ioc.GinMiddlewares(cfg, dyn, cmdable, handler)
+	db := ioc.InitDB(cfg)
 	gormUserDAO := dao.NewGORMUserDAO(db)
 	redisUserCache := cache.NewRedisUserCache(cmdable)
 	cachedUserRepository := repository.NewCachedUserRepository(gormUserDAO, redisUserCache)
@@ -33,9 +35,9 @@ func InitWebServer() *gin.Engine {
 	cachedCodeRepository := repository.NewCachedCodeRepository(redisCodeCache)
 	smsService := ioc.InitSmsService()
 	smsCodeService := service.NewSMSCodeService(cachedCodeRepository, smsService)
-	userHandler := web.NewUserHandler(userServiceImpl, smsCodeService)
-	wechatService := ioc.InitWechatService()
-	oAuth2WechatHandler := web.NewOAuth2WechatHandler(wechatService, userServiceImpl)
-	engine := ioc.InitWebServer(v, userHandler, oAuth2WechatHandler)
+	userHandler := web.NewUserHandler(userServiceImpl, smsCodeService, handler)
+	wechatService := ioc.InitWechatService(cfg)
+	oAuth2WechatHandler := ioc.InitOAuth2WechatHandler(cfg, wechatService, userServiceImpl, handler)
+	engine := ioc.InitWebServer(cfg, dyn, v, userHandler, oAuth2WechatHandler)
 	return engine
 }

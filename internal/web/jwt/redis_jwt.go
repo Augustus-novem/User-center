@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	appconfig "user-center/internal/config"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -18,27 +19,29 @@ var (
 	luaClearTokenCode string
 	//go:embed lua/compare_and_set.lua
 	luaRotateRefreshCode      string
-	RefreshTokenKey           = []byte("PYB340i9IPNMJYVxT4ZPTWxa882JTGScFvhG4IGib6h")
-	AccessTokenKey            = []byte("48lJdJICc98rxdTD47otl9y3w78PGePJn9QW0vlgCXD")
 	ErrJWTTokenInvalid        = errors.New("jwt token invalid")
 	ErrJWTTokenSessionExpired = errors.New("jwt token session expired")
 )
 
 type RedisHandler struct {
-	cmd         redis.Cmdable
-	atTTL       time.Duration
-	rtTTL       time.Duration
-	idleTTL     time.Duration
-	absoluteTTL time.Duration
+	cmd             redis.Cmdable
+	accessTokenKey  []byte
+	refreshTokenKey []byte
+	atTTL           time.Duration
+	rtTTL           time.Duration
+	idleTTL         time.Duration
+	absoluteTTL     time.Duration
 }
 
-func NewRedisHandler(cmd redis.Cmdable) *RedisHandler {
+func NewRedisHandlerWithConfig(cmd redis.Cmdable, cfg appconfig.JWTConfig) *RedisHandler {
 	return &RedisHandler{
-		cmd:         cmd,
-		atTTL:       15 * time.Minute,
-		rtTTL:       7 * 24 * time.Hour,
-		idleTTL:     7 * 24 * time.Hour,
-		absoluteTTL: 30 * 24 * time.Hour,
+		cmd:             cmd,
+		accessTokenKey:  []byte(cfg.AccessTokenKey),
+		refreshTokenKey: []byte(cfg.RefreshTokenKey),
+		atTTL:           cfg.AccessTokenTTL,
+		rtTTL:           cfg.RefreshTokenTTL,
+		idleTTL:         cfg.IdleTimeout,
+		absoluteTTL:     cfg.AbsoluteTimeout,
 	}
 }
 
@@ -75,7 +78,7 @@ func (h *RedisHandler) SetRefreshToken(ctx *gin.Context, ssid string, uid int64,
 		},
 	}
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, rc)
-	tokenStr, err := refreshToken.SignedString(RefreshTokenKey)
+	tokenStr, err := refreshToken.SignedString(h.refreshTokenKey)
 	if err != nil {
 		return err
 	}
@@ -96,7 +99,7 @@ func (h *RedisHandler) SetJWTToken(ctx *gin.Context, ssid string, uid int64) err
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(h.atTTL)),
 		},
 	})
-	tokenStr, err := token.SignedString(AccessTokenKey)
+	tokenStr, err := token.SignedString(h.accessTokenKey)
 	if err != nil {
 		return err
 	}
@@ -148,6 +151,20 @@ func (h *RedisHandler) ExtractAccessTokenString(ctx *gin.Context) string {
 	return authSegments[1]
 }
 
+func (h *RedisHandler) ParseAccessToken(tokenStr string) (*UserClaims, error) {
+	if tokenStr == "" {
+		return nil, ErrJWTTokenInvalid
+	}
+	uc := UserClaims{}
+	token, err := jwt.ParseWithClaims(tokenStr, &uc, func(token *jwt.Token) (interface{}, error) {
+		return h.accessTokenKey, nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	if err != nil || token == nil || !token.Valid {
+		return nil, ErrJWTTokenInvalid
+	}
+	return &uc, nil
+}
+
 func (h *RedisHandler) Refresh(ctx *gin.Context) error {
 	tokenStr := ctx.GetHeader("x-refresh-token")
 	if tokenStr == "" {
@@ -155,7 +172,7 @@ func (h *RedisHandler) Refresh(ctx *gin.Context) error {
 	}
 	var rc RefreshClaims
 	token, err := jwt.ParseWithClaims(tokenStr, &rc, func(token *jwt.Token) (interface{}, error) {
-		return RefreshTokenKey, nil
+		return h.refreshTokenKey, nil
 	})
 	if err != nil || token == nil || !token.Valid {
 		return ErrJWTTokenInvalid

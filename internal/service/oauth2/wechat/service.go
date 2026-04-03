@@ -12,24 +12,26 @@ import (
 
 const authURLPattern = "https://open.weixin.qq.com/connect/qrconnect?appid=%s&redirect_uri=%s&response_type=code&scope=snsapi_login&state=%s#wechat_redirect"
 
-var redirectURL = url.PathEscape("http://localhost:8081/oauth2/wechat/callback")
-
 type service struct {
-	appId     string
-	appSecret string
-	client    *http.Client
+	appId       string
+	appSecret   string
+	redirectURL string
+	client      *http.Client
 }
 
-func NewService(appId string, appSecret string) Service {
+func NewService(appId string, appSecret string, redirect string) Service {
+	escaped := url.PathEscape(redirect)
 	return &service{
-		appId:     appId,
-		appSecret: appSecret,
-		client:    &http.Client{},
+		appId:       appId,
+		appSecret:   appSecret,
+		redirectURL: escaped,
+		client:      &http.Client{},
 	}
 }
 
 func (s *service) AuthURL(ctx context.Context, state string) (string, error) {
-	return fmt.Sprintf(authURLPattern, s.appId, redirectURL, state), nil
+	redirect := s.redirectURL
+	return fmt.Sprintf(authURLPattern, s.appId, redirect, state), nil
 }
 
 func (s *service) VerifyCode(ctx context.Context, code string) (domain.SocialAccount, error) {

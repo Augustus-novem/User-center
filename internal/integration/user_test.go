@@ -1,3 +1,5 @@
+//go:build integration
+
 package integration
 
 import (
@@ -9,8 +11,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+	"user-center/internal/config"
 
-	"user-center/config"
 	"user-center/internal/repository"
 	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
@@ -57,7 +59,7 @@ func mustInitWebServer(t *testing.T) (*gin.Engine, *redis.Client) {
 		codeSvc := service.NewSMSCodeService(codeRepo, ioc.InitSmsMemoryService())
 		hdl := web.NewUserHandler(userSvc, codeSvc)
 		oauth2Hdl := web.NewOAuth2WechatHandler(wechatsvc.NewService("test-app-id", "test-app-secret"), userSvc)
-		server = ioc.InitWebServer(ioc.GinMiddlwares(rdb), hdl, oauth2Hdl)
+		server = ioc.InitWebServer(ioc.GinMiddlewares(rdb), hdl, oauth2Hdl)
 		db = gdb
 	}()
 	_ = db

@@ -7,7 +7,6 @@ import (
 
 	"github.com/ecodeclub/ekit/set"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 type JWTLoginMiddlewareBuilder struct {
@@ -36,14 +35,8 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 			return
 		}
 		tokenStr := j.ExtractAccessTokenString(ctx)
-		uc := jwt2.UserClaims{}
-		token, err := jwt.ParseWithClaims(tokenStr,
-			&uc, func(token *jwt.Token) (interface{}, error) {
-				return jwt2.AccessTokenKey, nil
-			},
-			jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
-		)
-		if err != nil || token == nil || !token.Valid {
+		uc, err := j.ParseAccessToken(tokenStr)
+		if err != nil {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}

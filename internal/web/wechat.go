@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	appconfig "user-center/internal/config"
 	"user-center/internal/service"
 	"user-center/internal/service/oauth2/wechat"
 	jwt2 "user-center/internal/web/jwt"
@@ -13,25 +14,30 @@ import (
 	"github.com/google/uuid"
 )
 
-var stateTokenKey = []byte("REnqEpucqg3KNDgWrLkyaKiZYnD6R1b9v8PpTSIxlox")
-
 type OAuth2WechatHandler struct {
 	wechatSvc       wechat.Service
 	userSvc         service.UserService
 	stateCookieName string
 	stateTokenKey   []byte
+	stateTokenTTL   time.Duration
+	stateCookiePath string
 	jwt2.Handler
 }
 
-func NewOAuth2WechatHandler(service wechat.Service,
+func NewOAuth2WechatHandlerWithConfig(
+	service wechat.Service,
 	userSvc service.UserService,
-	jwtHdl jwt2.Handler) *OAuth2WechatHandler {
+	jwtHdl jwt2.Handler,
+	cfg appconfig.WechatConfig,
+) *OAuth2WechatHandler {
 	return &OAuth2WechatHandler{
 		wechatSvc:       service,
 		userSvc:         userSvc,
 		Handler:         jwtHdl,
-		stateCookieName: "jwt-state",
-		stateTokenKey:   stateTokenKey,
+		stateCookieName: cfg.StateCookieName,
+		stateTokenKey:   []byte(cfg.StateTokenKey),
+		stateTokenTTL:   cfg.StateTokenTTL,
+		stateCookiePath: cfg.StateCookiePath,
 	}
 }
 
@@ -105,7 +111,7 @@ func (h *OAuth2WechatHandler) setStateCookie(ctx *gin.Context, state string) err
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, StateClaims{
 		State: state,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 10)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(h.stateTokenTTL)),
 		},
 	})
 	tokenStr, err := token.SignedString(h.stateTokenKey)
@@ -113,8 +119,8 @@ func (h *OAuth2WechatHandler) setStateCookie(ctx *gin.Context, state string) err
 		return err
 	}
 	ctx.SetCookie(h.stateCookieName, tokenStr,
-		600,
-		"/oauth2/wechat/callback",
+		int(h.stateTokenTTL/time.Second),
+		h.stateCookiePath,
 		"", false, true)
 	return nil
 }

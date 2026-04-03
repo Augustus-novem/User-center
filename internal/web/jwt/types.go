@@ -12,6 +12,7 @@ type Handler interface {
 	ExtractAccessTokenString(ctx *gin.Context) string
 	CheckSession(ctx *gin.Context, ssid string) error
 	Refresh(ctx *gin.Context) error
+	ParseAccessToken(tokenStr string) (*UserClaims, error)
 }
 
 type RefreshClaims struct {

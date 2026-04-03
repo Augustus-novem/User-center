@@ -1,18 +1,20 @@
 package ioc
 
 import (
-	"os"
+	"user-center/internal/config"
+	"user-center/internal/service"
 	"user-center/internal/service/oauth2/wechat"
+	"user-center/internal/web"
+	jwt2 "user-center/internal/web/jwt"
 )
 
-func InitWechatService() wechat.Service {
-	appId, ok := os.LookupEnv("WECHAT_APP_ID")
-	if !ok {
-		panic("没有找到环境变量 WECHAT_APP_ID ")
-	}
-	appkey, ok := os.LookupEnv("WECHAT_APP_KEY")
-	if !ok {
-		panic("没有找到环境变量 WECHAT_APP_KEY")
-	}
-	return wechat.NewService(appId, appkey)
+func InitWechatService(cfg *config.AppConfig) wechat.Service {
+	return wechat.NewService(cfg.Wechat.AppID, cfg.Wechat.AppKey, cfg.Wechat.RedirectURL)
+}
+
+func InitOAuth2WechatHandler(cfg *config.AppConfig,
+	wechatSvc wechat.Service,
+	userSvc service.UserService,
+	jwtHdl jwt2.Handler) *web.OAuth2WechatHandler {
+	return web.NewOAuth2WechatHandlerWithConfig(wechatSvc, userSvc, jwtHdl, cfg.Wechat)
 }

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"user-center/internal/domain"
 	"user-center/internal/service"
+	jwt2 "user-center/internal/web/jwt"
 
 	"github.com/gin-gonic/gin"
 )
@@ -74,6 +75,56 @@ func (s *codeServiceStub) Verify(ctx context.Context, biz, phone, inputCode stri
 		return false, nil
 	}
 	return s.verifyFn(ctx, biz, phone, inputCode)
+}
+
+type jwtHandlerStubForUser struct {
+	setLoginTokenFn func(ctx *gin.Context, uid int64) error
+	clearTokenFn    func(ctx *gin.Context) error
+	refreshFn       func(ctx *gin.Context) error
+}
+
+func (s *jwtHandlerStubForUser) ClearToken(ctx *gin.Context) error {
+	if s.clearTokenFn != nil {
+		return s.clearTokenFn(ctx)
+	}
+	ctx.Header("x-jwt-token", "")
+	ctx.Header("x-refresh-token", "")
+	return nil
+}
+
+func (s *jwtHandlerStubForUser) SetJWTToken(ctx *gin.Context, ssid string, uid int64) error {
+	ctx.Header("x-jwt-token", "test-jwt-token")
+	return nil
+}
+
+func (s *jwtHandlerStubForUser) SetLoginToken(ctx *gin.Context, uid int64) error {
+	if s.setLoginTokenFn != nil {
+		return s.setLoginTokenFn(ctx, uid)
+	}
+	ctx.Header("x-jwt-token", "test-jwt-token")
+	ctx.Header("x-refresh-token", "test-refresh-token")
+	return nil
+}
+
+func (s *jwtHandlerStubForUser) ExtractAccessTokenString(ctx *gin.Context) string {
+	return ""
+}
+
+func (s *jwtHandlerStubForUser) CheckSession(ctx *gin.Context, ssid string) error {
+	return nil
+}
+
+func (s *jwtHandlerStubForUser) Refresh(ctx *gin.Context) error {
+	if s.refreshFn != nil {
+		return s.refreshFn(ctx)
+	}
+	ctx.Header("x-jwt-token", "refreshed-jwt-token")
+	ctx.Header("x-refresh-token", "refreshed-refresh-token")
+	return nil
+}
+
+func (s *jwtHandlerStubForUser) ParseAccessToken(tokenStr string) (*jwt2.UserClaims, error) {
+	return &jwt2.UserClaims{Id: 1}, nil
 }
 
 func TestUserHandler_Signup(t *testing.T) {
@@ -167,7 +218,7 @@ func TestUserHandler_Signup(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			server := gin.New()
-			h := NewUserHandler(tc.userSvc, &codeServiceStub{})
+			h := NewUserHandler(tc.userSvc, &codeServiceStub{}, &jwtHandlerStubForUser{})
 			h.RegisterRoutes(server)
 
 			req := httptest.NewRequest(http.MethodPost, "/user/signup", bytes.NewBufferString(tc.body))
@@ -245,7 +296,7 @@ func TestUserHandler_Login(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			server := gin.New()
-			h := NewUserHandler(tc.userSvc, &codeServiceStub{})
+			h := NewUserHandler(tc.userSvc, &codeServiceStub{}, &jwtHandlerStubForUser{})
 			h.RegisterRoutes(server)
 
 			req := httptest.NewRequest(http.MethodPost, "/user/login", bytes.NewBufferString(tc.body))
@@ -337,7 +388,7 @@ func TestUserHandler_SendSMSLoginCode(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			server := gin.New()
-			h := NewUserHandler(&userServiceStub{}, tc.codeSvc)
+			h := NewUserHandler(&userServiceStub{}, tc.codeSvc, &jwtHandlerStubForUser{})
 			h.RegisterRoutes(server)
 
 			req := httptest.NewRequest(http.MethodPost, "/user/login_sms/code/send", bytes.NewBufferString(tc.body))
