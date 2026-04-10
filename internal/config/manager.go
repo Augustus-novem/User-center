@@ -164,6 +164,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("log.output_paths", []string{"stdout"})
 	v.SetDefault("log.error_output_paths", []string{"stderr"})
 	v.SetDefault("log.development", true)
+	v.SetDefault("log.file.enabled", false)
+	v.SetDefault("log.file.filename", "logs/user-center.log")
+	v.SetDefault("log.file.max_size", 100)
+	v.SetDefault("log.file.max_backups", 5)
+	v.SetDefault("log.file.max_age", 30)
+	v.SetDefault("log.file.local_time", true)
+	v.SetDefault("log.file.compress", false)
 	v.SetDefault("feature.enable_wechat_login", true)
 	v.SetDefault("feature.enable_sms_login", true)
 	v.SetDefault("feature.enable_debug_log", false)
@@ -204,6 +211,20 @@ func validate(cfg AppConfig) error {
 	if cfg.JWT.RefreshTokenKey == "" {
 		return fmt.Errorf("jwt.refresh_token_key 不能为空")
 	}
+	if cfg.Log.File.Enabled {
+		if cfg.Log.File.Filename == "" {
+			return fmt.Errorf("log.file.filename 不能为空")
+		}
+		if cfg.Log.File.MaxSize <= 0 {
+			return fmt.Errorf("log.file.max_size 必须大于 0")
+		}
+		if cfg.Log.File.MaxBackups < 0 {
+			return fmt.Errorf("log.file.max_backups 不能小于 0")
+		}
+		if cfg.Log.File.MaxAge < 0 {
+			return fmt.Errorf("log.file.max_age 不能小于 0")
+		}
+	}
 	if cfg.RateLimit.Enabled && cfg.RateLimit.Limit <= 0 {
 		return fmt.Errorf("ratelimit.limit 必须大于 0")
 	}
@@ -220,25 +241,25 @@ func validate(cfg AppConfig) error {
 		return fmt.Errorf("jwt.absolute_timeout 必须大于 0")
 	}
 	if cfg.Wechat.AppID == "" {
-		return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.app_id 不能为空")
+		return fmt.Errorf("wechat.app_id 不能为空")
 	}
 	if cfg.Wechat.AppKey == "" {
-		return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.app_key 不能为空")
+		return fmt.Errorf("wechat.app_key 不能为空")
 	}
 	if cfg.Wechat.RedirectURL == "" {
-		return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.redirect_url 不能为空")
+		return fmt.Errorf("wechat.redirect_url 不能为空")
 	}
 	if cfg.Wechat.StateCookieName == "" {
-		return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_cookie_name 不能为空")
+		return fmt.Errorf("wechat.state_cookie_name 不能为空")
 	}
 	if cfg.Wechat.StateTokenKey == "" {
-		return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_token_key 不能为空")
+		return fmt.Errorf("wechat.state_token_key 不能为空")
 	}
 	if cfg.Wechat.StateTokenTTL <= 0 {
-		return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_token_ttl 必须大于 0")
+		return fmt.Errorf("wechat.state_token_ttl 必须大于 0")
 	}
 	if cfg.Wechat.StateCookiePath == "" {
-		return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_cookie_path 不能为空")
+		return fmt.Errorf("wechat.state_cookie_path 不能为空")
 	}
 	return nil
 }

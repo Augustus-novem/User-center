@@ -76,14 +76,25 @@ type RateLimitConfig struct {
 	Limit    int           `mapstructure:"limit"`
 }
 
+type LogFileConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	Filename   string `mapstructure:"filename"`
+	MaxSize    int    `mapstructure:"max_size"`
+	MaxBackups int    `mapstructure:"max_backups"`
+	MaxAge     int    `mapstructure:"max_age"`
+	LocalTime  bool   `mapstructure:"local_time"`
+	Compress   bool   `mapstructure:"compress"`
+}
+
 type LogConfig struct {
-	Level             string   `mapstructure:"level"`
-	Encoding          string   `mapstructure:"encoding"`
-	OutputPaths       []string `mapstructure:"output_paths"`
-	ErrorOutputPaths  []string `mapstructure:"error_output_paths"`
-	DisableCaller     bool     `mapstructure:"disable_caller"`
-	DisableStacktrace bool     `mapstructure:"disable_stacktrace"`
-	Development       bool     `mapstructure:"development"`
+	Level             string        `mapstructure:"level"`
+	Encoding          string        `mapstructure:"encoding"`
+	OutputPaths       []string      `mapstructure:"output_paths"`
+	ErrorOutputPaths  []string      `mapstructure:"error_output_paths"`
+	DisableCaller     bool          `mapstructure:"disable_caller"`
+	DisableStacktrace bool          `mapstructure:"disable_stacktrace"`
+	Development       bool          `mapstructure:"development"`
+	File              LogFileConfig `mapstructure:"file"`
 }
 
 type FeatureConfig struct {

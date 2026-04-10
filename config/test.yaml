@@ -64,6 +64,14 @@ log:
   disable_caller: false
   disable_stacktrace: false
   development: true
+  file:
+    enabled: false
+    filename: logs/user-center-test.log
+    max_size: 50
+    max_backups: 3
+    max_age: 7
+    local_time: true
+    compress: false
 
 feature:
   enable_wechat_login: false

@@ -10,12 +10,13 @@ import (
 	"user-center/internal/service"
 	"user-center/internal/web"
 	"user-center/ioc"
+	"user-center/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 )
 
-func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider) *gin.Engine {
+func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.Logger) *gin.Engine {
 	wire.Build(
 		//基础部分
 		ioc.InitDB, ioc.InitRedis, ioc.InitSmsService, ioc.InitWechatService, ioc.InitTX,

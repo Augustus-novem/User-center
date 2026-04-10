@@ -15,14 +15,15 @@ import (
 	"user-center/internal/service"
 	"user-center/internal/web"
 	"user-center/ioc"
+	"user-center/pkg/logger"
 )
 
 // Injectors from wire.go:
 
-func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider) *gin.Engine {
+func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.Logger) *gin.Engine {
 	cmdable := ioc.InitRedis(cfg)
 	handler := ioc.InitJWTHandler(cfg, cmdable)
-	v := ioc.GinMiddlewares(cfg, dyn, cmdable, handler)
+	v := ioc.GinMiddlewares(cfg, dyn, cmdable, handler, l)
 	db := ioc.InitDB(cfg)
 	gormUserDAO := dao.NewGORMUserDAO(db)
 	redisUserCache := cache.NewRedisUserCache(cmdable)
@@ -33,7 +34,7 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider) *gin.Engin
 	userServiceImpl := service.NewUserServiceImpl(cachedUserRepository, socialAccountRepositoryImpl, transaction)
 	redisCodeCache := cache.NewRedisCodeCache(cmdable)
 	cachedCodeRepository := repository.NewCachedCodeRepository(redisCodeCache)
-	smsService := ioc.InitSmsService()
+	smsService := ioc.InitSmsService(l)
 	smsCodeService := service.NewSMSCodeService(cachedCodeRepository, smsService)
 	userHandler := web.NewUserHandler(userServiceImpl, smsCodeService, handler)
 	wechatService := ioc.InitWechatService(cfg)

@@ -3,9 +3,9 @@ package ratelimit
 import (
 	_ "embed"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
+	"user-center/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,18 +17,23 @@ type Builder struct {
 	cmd      redis.Cmdable
 	interval time.Duration
 	// 阈值
-	rate int
+	rate   int
+	logger logger.Logger
 }
 
 //go:embed slide_window.lua
 var luaScript string
 
-func NewBuilder(cmd redis.Cmdable, interval time.Duration, rate int) *Builder {
+func NewBuilder(cmd redis.Cmdable, interval time.Duration, rate int, l logger.Logger) *Builder {
+	if l == nil {
+		l = logger.NewNoOpLogger()
+	}
 	return &Builder{
 		cmd:      cmd,
 		prefix:   "ip-limiter",
 		interval: interval,
 		rate:     rate,
+		logger:   l,
 	}
 }
 
@@ -41,14 +46,18 @@ func (b *Builder) Build() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		limited, err := b.limit(ctx)
 		if err != nil {
-			log.Println(err)
-			// 这一步很有意思，就是如果这边出错了
-			// 要怎么办？
+			b.logger.Error("限流检查失败",
+				logger.Field{Key: "path", Value: ctx.Request.URL.Path},
+				logger.Field{Key: "ip", Value: ctx.ClientIP()},
+				logger.Error(err))
 			ctx.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 		if limited {
-			log.Println(err)
+			b.logger.Warn("请求被限流",
+				logger.Field{Key: "path", Value: ctx.Request.URL.Path},
+				logger.Field{Key: "ip", Value: ctx.ClientIP()},
+			)
 			ctx.AbortWithStatus(http.StatusTooManyRequests)
 			return
 		}

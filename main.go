@@ -22,8 +22,9 @@ func main() {
 	}()
 
 	cfgManager.StartWatch(logger, atomicLevel)
+	appLogger := ioc.NewLogger(logger)
 	logger.Info("配置初始化完成", zap.String("config", cfgManager.Path()))
-	server := InitWebServer(&cfg, cfgManager)
+	server := InitWebServer(&cfg, cfgManager, appLogger)
 	logger.Info("HTTP 服务启动", zap.String("addr", cfg.Addr()))
 	if err = server.Run(cfg.Addr()); err != nil {
 		logger.Error("HTTP 服务启动失败", zap.Error(err))
