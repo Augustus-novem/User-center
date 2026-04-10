@@ -7,4 +7,8 @@ var DAOSet = wire.NewSet(
 	wire.Bind(new(UserDAO), new(*GORMUserDAO)),
 	NewGormSocialAccountDAO,
 	wire.Bind(new(SocialAccountDAO), new(*GORMSocialAccountDAO)),
+	NewGORMSignInDAO,
+	wire.Bind(new(SignInDAO), new(*GORMSignInDAO)),
+	NewGORMPointDAO,
+	wire.Bind(new(PointDAO), new(*GORMPointDAO)),
 )

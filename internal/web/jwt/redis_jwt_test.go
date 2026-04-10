@@ -234,7 +234,7 @@ func TestRedisHandler_ClearToken(t *testing.T) {
 	ssid := "logout-ssid"
 
 	fake.set(h.refreshKey(ssid), "old-jti", h.rtTTL)
-	ctx.Set("user", UserClaims{Id: 123, Ssid: ssid})
+	ctx.Set("user", &UserClaims{Id: 123, Ssid: ssid})
 
 	if err := h.ClearToken(ctx); err != nil {
 		t.Fatalf("clear token failed: %v", err)
@@ -372,7 +372,7 @@ func TestRedisHandler_Refresh_FailsAfterLogout(t *testing.T) {
 	fake.set(h.refreshKey(ssid), jti, h.rtTTL)
 
 	logoutCtx, _ := newGinCtx(http.MethodPost, "/user/logout")
-	logoutCtx.Set("user", UserClaims{Id: uid, Ssid: ssid})
+	logoutCtx.Set("user", &UserClaims{Id: uid, Ssid: ssid})
 	if err := h.ClearToken(logoutCtx); err != nil {
 		t.Fatalf("clear token: %v", err)
 	}

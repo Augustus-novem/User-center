@@ -38,6 +38,17 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider) *gin.Engin
 	userHandler := web.NewUserHandler(userServiceImpl, smsCodeService, handler)
 	wechatService := ioc.InitWechatService(cfg)
 	oAuth2WechatHandler := ioc.InitOAuth2WechatHandler(cfg, wechatService, userServiceImpl, handler)
-	engine := ioc.InitWebServer(cfg, dyn, v, userHandler, oAuth2WechatHandler)
+	gormSignInDAO := dao.NewGORMSignInDAO(db)
+	redisSignInCache := cache.NewRedisSignInCache(cmdable)
+	signInRepositoryImpl := repository.NewSignInRepositoryImpl(gormSignInDAO, redisSignInCache)
+	gormPointDAO := dao.NewGORMPointDAO(db)
+	pointRepositoryImpl := repository.NewPointRepositoryImpl(gormPointDAO)
+	redisRankCache := cache.NewRedisRankCache(cmdable)
+	rankRepositoryImpl := repository.NewRankRepositoryImpl(redisRankCache)
+	signInServiceImpl := service.NewSignInService(signInRepositoryImpl, pointRepositoryImpl, rankRepositoryImpl, transaction)
+	checkInHandler := web.NewCheckInHandler(signInServiceImpl)
+	rankServiceImpl := service.NewRankServiceImpl(rankRepositoryImpl, cachedUserRepository)
+	rankHandler := web.NewRankHandler(rankServiceImpl)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler)
 	return engine
 }

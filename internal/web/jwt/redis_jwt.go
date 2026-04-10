@@ -52,7 +52,7 @@ func (h *RedisHandler) ClearToken(ctx *gin.Context) error {
 	if !ok {
 		return ErrJWTTokenInvalid
 	}
-	userClaims, ok := uc.(UserClaims)
+	userClaims, ok := uc.(*UserClaims)
 	if !ok {
 		return ErrJWTTokenInvalid
 	}

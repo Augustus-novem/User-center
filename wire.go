@@ -27,6 +27,8 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider) *gin.Engin
 
 		ioc.InitJWTHandler,
 		web.NewUserHandler,
+		web.NewCheckInHandler,
+		web.NewRankHandler,
 		ioc.GinMiddlewares,
 		ioc.InitWebServer,
 		ioc.InitOAuth2WechatHandler,

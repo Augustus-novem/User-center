@@ -176,7 +176,7 @@ func (u *UserHandler) Profile(ctx *gin.Context) {
 		JSONUnauthorized(ctx, "请先登录")
 		return
 	}
-	uc := val.(jwt2.UserClaims)
+	uc := val.(*jwt2.UserClaims)
 	user, err := u.svc.Profile(ctx.Request.Context(), uc.Id)
 	if err != nil {
 		JSONInternalServerError(ctx, "系统错误")

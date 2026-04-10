@@ -11,4 +11,10 @@ var RepoSet = wire.NewSet(
 	wire.Bind(new(UserRepository), new(*CachedUserRepository)),
 	NewSocialAccountRepositoryImpl,
 	wire.Bind(new(SocialAccountRepository), new(*SocialAccountRepositoryImpl)),
+	NewSignInRepositoryImpl,
+	wire.Bind(new(SignInRepository), new(*SignInRepositoryImpl)),
+	NewPointRepositoryImpl,
+	wire.Bind(new(PointRepository), new(*PointRepositoryImpl)),
+	NewRankRepositoryImpl,
+	wire.Bind(new(RankRepository), new(*RankRepositoryImpl)),
 )
