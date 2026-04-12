@@ -153,6 +153,7 @@ func TestValidate(t *testing.T) {
 			StateCookiePath: "/oauth2/wechat/callback",
 		},
 		RateLimit: RateLimitConfig{Enabled: true, Limit: 100},
+		Feature:   FeatureConfig{EnableWechatLogin: true},
 	}
 
 	tests := []struct {

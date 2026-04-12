@@ -56,5 +56,6 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 			return
 		}
 		ctx.Set("user", uc)
+		ctx.Next()
 	}
 }

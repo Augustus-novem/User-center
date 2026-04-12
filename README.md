@@ -1,23 +1,26 @@
 # user-center
 
-一个基于 **Go + Gin + GORM + MySQL + Redis** 的用户中心项目，包含邮箱注册登录、JWT 登录态、短信验证码登录、微信 OAuth 登录、Redis 限流、统一配置管理和单元测试。
+一个基于 **Go + Gin + GORM + MySQL + Redis + Kafka** 的用户中心项目，包含邮箱注册登录、JWT 登录态、短信验证码登录、微信 OAuth 登录、签到与排行榜，以及基于 Kafka 的异步业务事件链路。
 
-这个项目最初是一个“参数大量写死”的后端练习项目，后续逐步改造成了一个更像正式后端服务的版本：
+这版项目在原来的单体用户中心基础上，新增了一条**轻量服务拆分**路线：
 
-- 配置统一收口到 `AppConfig`
-- 使用 `viper + yaml + env override`
-- 配置消费限制在 `main + ioc`
-- 支持本地配置 watch
-- `log.level` 支持热更新
-- `feature` 开关支持**请求级动态控制**
-- `go test ./...` 已可通过
+- 主服务 `user-center` 负责同步接口与核心事务
+- `worker` 负责消费 Kafka 事件并执行积分、排行榜、行为日志等异步任务
+- `notification-service` 负责消费注册事件并发送欢迎消息
+- Kafka 负责解耦“主流程”和“后置处理”
+
+它还不是“大规模微服务”，但已经具备了：
+
+- 事件驱动思维
+- producer / consumer / consumer group 基础实践
+- 主服务 / worker / notification-service 的职责拆分意识
+- 同步主流程 + 异步后处理 的典型后端设计
 
 ---
 
-## 1. 功能概览
+## 1. 当前功能概览
 
-当前实现的核心能力：
-
+### 用户能力
 - 邮箱注册
 - 邮箱密码登录
 - JWT 登录态
@@ -26,11 +29,33 @@
 - 用户信息查询
 - 短信验证码发送与验证码登录
 - 微信 OAuth 登录
-- Redis 验证码缓存与 Lua 校验
-- Redis IP 限流中间件
-- CORS 配置化
-- Logger 配置化
-- 配置文件热更新（部分配置）
+
+### 签到与排行
+- 每日签到
+- 今日是否签到查询
+- 月度签到记录查询
+- 连续签到天数查询
+- 日榜 / 月榜查询
+
+### Kafka 异步事件
+- 用户注册成功发送 `user.registered`
+- worker 消费注册事件
+- 异步初始化欢迎积分
+- notification-service 消费注册事件
+- 异步写入欢迎消息
+- 用户签到成功发送 `user.activity`
+- worker 消费行为事件
+- 异步更新排行榜
+- 异步写入行为日志到 Redis
+
+### 配置与工程化
+- 统一配置 `AppConfig`
+- `viper + yaml + env override`
+- 配置热更新（动态部分）
+- Zap 日志
+- Wire 依赖注入
+- Docker Compose 本地依赖环境
+- 单元测试骨架
 
 ---
 
@@ -46,7 +71,9 @@
 - Service / Repository / DAO 分层
 - 用户服务
 - 短信验证码服务
-- 微信 OAuth 登录服务
+- 签到服务
+- 排行榜服务
+- Kafka 事件发布
 
 ### 存储层
 - MySQL 8
@@ -54,12 +81,17 @@
 - Redis
 - Lua 脚本实现验证码发送/校验限流
 
+### 异步链路
+- Apache Kafka
+- Sarama（Go Kafka Client）
+- Consumer Group
+- Worker / Notification consumers
+
 ### 工程化
 - Viper 配置管理
 - Zap 日志
 - Wire 依赖注入
 - Docker Compose 本地依赖环境
-- 单元测试 + mock
 
 ---
 
@@ -67,93 +99,181 @@
 
 ```text
 user-center/
-├── config/                     # 多环境配置文件
+├── cmd/
+│   ├── worker/                # Kafka worker 入口
+│   └── notification-service/  # Kafka 通知服务入口
+├── config/                    # 多环境配置文件
 │   ├── dev.yaml
+│   ├── worker.yaml
+│   ├── notification.yaml
 │   └── test.yaml
 ├── internal/
-│   ├── config/                 # 配置结构、管理器、动态配置 holder
-│   ├── domain/                 # 领域模型
-│   ├── repository/             # repository / dao / cache
-│   ├── service/                # 业务服务
-│   └── web/                    # handler / jwt / middleware
-├── ioc/                        # provider，负责消费配置并初始化依赖
-├── script/mysql/               # MySQL 初始化脚本
-├── docker-compose.yaml         # 本地 MySQL / Redis 环境
-├── wire.go                     # Wire 注入入口
-├── wire_gen.go                 # Wire 生成代码
-└── main.go                     # 程序入口
+│   ├── config/                # 配置结构、管理器、动态配置 holder
+│   ├── domain/                # 领域模型
+│   ├── events/                # Kafka 事件定义、publisher
+│   ├── repository/            # repository / dao / cache
+│   ├── service/               # 业务服务
+│   ├── web/                   # handler / jwt / middleware
+│   ├── worker/                # Kafka consumer handler / 去重逻辑
+│   └── notification/          # 通知服务 consumer handler
+├── ioc/                       # provider，负责消费配置并初始化依赖
+├── script/mysql/              # MySQL 初始化脚本
+├── docker-compose.yaml        # 本地 MySQL / Redis / Kafka 环境
+├── wire.go                    # Wire 注入入口
+├── wire_gen.go                # Wire 生成结果
+└── main.go                    # user-center 主服务入口
 ```
 
 ---
 
-## 4. 配置系统设计
+## 4. 服务关系图
 
-这个项目的一个重点改造就是“统一配置体系”。
+```mermaid
+flowchart LR
+    A[Client] --> B[user-center]
+    B --> C[(MySQL)]
+    B --> D[(Redis)]
+    B --> E[(Kafka)]
+    F[worker] --> E
+    F --> C
+    F --> D
+    G[notification-service] --> E
+    G --> D
+```
 
-### 配置来源
-配置按以下顺序合并：
+### 你可以这样解释这张图
+
+- `user-center` 负责处理 HTTP 请求和核心事务
+- 用户注册、用户签到等主流程先快速完成
+- 后续耗时/解耦逻辑通过 Kafka 投递给异步服务
+- `worker` 消费事件后异步补做欢迎积分、排行榜更新、行为日志落地
+- `notification-service` 消费注册事件后异步写入欢迎消息
+
+这不是“上来就拆一堆微服务”，而是一个更适合简历和面试表达的**轻量拆分**：
+
+> 我先把主业务服务做好，再把天然适合异步的后置动作拆到 worker 和 notification-service，用 Kafka 解耦。
+
+---
+
+## 5. Kafka 设计说明
+
+### 5.1 Topic
+
+当前项目使用两个 topic：
+
+- `user.registered`
+- `user.activity`
+
+### 5.2 Producer
+
+主服务里会在业务成功后发布事件：
+
+- 注册成功后发布 `user.registered`
+- 签到成功后发布 `user.activity`
+
+### 5.3 Consumer
+
+`cmd/worker/main.go` 启动一个 Kafka consumer group，负责消费 `user.registered` 和 `user.activity`。
+
+`cmd/notification-service/main.go` 启动另一个独立 consumer group，负责消费 `user.registered` 并发送欢迎消息。
+
+### 5.4 Consumer Group
+
+默认拆成两个 consumer group：
+
+```yaml
+# worker.yaml
+kafka:
+  consumer_group: user-center-worker
+
+# notification.yaml
+kafka:
+  consumer_group: user-center-notification-service
+```
+
+后面如果你想扩容某个服务，可以启动多个实例放到同一个 group 里。不同服务使用不同 group，这样同一条 `user.registered` 事件就能分别被 worker 和 notification-service 各消费一次。
+
+### 5.5 Offset
+
+当前用的是 consumer group 模式，消息成功处理后会 `MarkMessage`，Kafka 会基于 consumer group 维护消费进度。
+
+### 5.6 幂等处理
+
+异步消费者里加了一个基于 Redis Lua 的**原子去重器**，同时区分 done 与 processing 两种状态：
+
+- done key：`consumer:event:done:{namespace}:{event_id}`
+- processing key：`consumer:event:processing:{namespace}:{event_id}`
+- done TTL：7 天
+- processing TTL：5 分钟
+
+不同服务使用不同 namespace，例如：
+
+- `worker:user_registered`
+- `notification:user_registered`
+
+这样即使 Kafka 因为重平衡或重试导致重复投递，也不会重复加积分、重复发欢迎消息，且两个服务之间不会互相误判“已经消费过”。
+
+---
+
+## 6. 配置系统说明
+
+### 6.1 配置来源
+
+按以下顺序合并：
 
 1. 默认值（`setDefaults`）
 2. 配置文件（`config/dev.yaml` / `config/test.yaml`）
 3. 环境变量覆盖（敏感项）
 4. 启动参数 `--config`
 
-### 核心设计
+### 6.2 当前支持热更新的配置
 
-- `internal/config/type.go`：定义统一的 `AppConfig`
-- `internal/config/manager.go`：负责读配置、校验配置、watch 配置文件
-- `main.go`：先初始化配置，再初始化其他依赖
-- `ioc/*.go`：按模块消费配置初始化 DB / Redis / JWT / Logger / Gin / Wechat
-- `service / repository / web`：**不直接依赖 viper**
-
-### 当前支持热更新的配置
 当前仅支持**部分动态配置热更新**：
 
 - `log.level`
 - `feature.*`
 
-### 当前不会热更新、修改后需重启的配置
+### 6.3 当前不会热更新、修改后需重启的配置
+
 以下配置变更后，当前进程不会自动重建依赖：
 
 - `server.*`
 - `db.*`
 - `redis.*`
+- `kafka.*`
 - `jwt.*`
 - `wechat.*`
 - `cors.*`
 - `ratelimit.*`
 
-程序在 watch 到这些静态配置变化时，会输出 warning 提示“需重启后生效”。
+### 6.4 关于微信登录配置校验
 
-### 关于 `feature` 开关
-`feature` 目前实现的是**请求级动态控制**：
+这里顺手修了一个配置问题：
 
-- 路由会正常注册
-- 每个请求进入时，根据当前动态配置决定是否放行
+- 以前即使 `feature.enable_wechat_login=false`，也会强制要求 `wechat.app_id/app_key` 非空
+- 现在改成：**只有开启微信登录时才校验微信配置**
 
-这意味着：
-
-- `feature.enable_wechat_login=false` 时，请求会被中间件拦截
-- `feature.enable_wechat_login=true` 时，请求可以放行
+这更符合 feature 开关的语义。
 
 ---
 
-## 5. 环境要求
+## 7. 环境要求
 
 建议本地准备：
 
 - Go 1.25+
 - Docker / Docker Compose
 - MySQL 8
-- Redis 7
+- Redis
+- Kafka
 
-如果你不想自己手动安装 MySQL/Redis，直接用项目自带的 `docker-compose.yaml` 即可。
+> 由于新增了 Sarama 依赖，如果你本地是第一次拉这版代码，先执行一次 `go mod tidy`。
 
 ---
 
-## 6. 快速开始
+## 8. 快速开始
 
-### 6.1 启动 MySQL 和 Redis
+### 8.1 启动依赖环境
 
 在项目根目录执行：
 
@@ -165,10 +285,11 @@ docker compose up -d
 
 - MySQL：`localhost:13316`
 - Redis：`localhost:6379`
+- Kafka：`localhost:9092`
 
-### 6.2 数据库初始化
+### 8.2 数据库初始化
 
-项目启动时会自动执行 GORM `AutoMigrate`，初始化表结构。
+项目启动时会自动执行 GORM `AutoMigrate`。
 
 `docker-compose` 中已挂载 `script/mysql/user.sql`，会自动创建：
 
@@ -182,301 +303,259 @@ CREATE DATABASE user_center;
 CREATE DATABASE user_center_test;
 ```
 
-### 6.3 安装依赖
+### 8.3 安装依赖
 
 ```bash
 go mod tidy
 ```
 
-### 6.4 启动服务
-
-默认开发配置：
+### 8.4 启动主服务
 
 ```bash
 go run . --config=config/dev.yaml
 ```
 
-启动后服务默认监听：
+默认监听：
 
 ```text
 http://localhost:8081
 ```
 
+### 8.5 启动 worker
+
+新开一个终端执行：
+
+```bash
+go run ./cmd/worker --config=config/worker.yaml
+```
+
+如果看到类似日志，说明 worker 已经开始消费：
+
+```text
+Kafka worker 启动成功
+```
+
+### 8.6 启动 notification-service
+
+再开一个终端执行：
+
+```bash
+go run ./cmd/notification-service --config=config/notification.yaml
+```
+
+如果看到类似日志，说明通知服务已经开始消费：
+
+```text
+Kafka notification-service 启动成功
+```
+
 ---
 
-## 7. 配置文件说明
+## 9. 核心配置项
 
-开发环境配置文件：
-
-- `config/dev.yaml`
-
-测试环境配置文件：
-
-- `config/test.yaml`
-
-### 关键配置项
-
-#### 服务
+### Kafka
 
 ```yaml
-server:
-  name: user-center
-  port: 8081
-  mode: debug
-```
-
-#### MySQL / Redis
-
-```yaml
-db:
-  dsn: root:root@tcp(localhost:13316)/user_center?charset=utf8mb4&parseTime=True&loc=Local
-
-redis:
-  addr: localhost:6379
-  password: ""
-  db: 1
-```
-
-#### JWT
-
-```yaml
-jwt:
-  access_token_key: xxx
-  refresh_token_key: xxx
-  access_token_ttl: 15m
-  refresh_token_ttl: 168h
-  idle_timeout: 168h
-  absolute_timeout: 720h
-```
-
-#### Wechat OAuth
-
-```yaml
-wechat:
-  app_id: xxx
-  app_key: xxx
-  redirect_url: http://localhost:8081/oauth2/wechat/callback
-  state_cookie_name: jwt-state
-  state_token_key: xxx
-  state_token_ttl: 10m
-  state_cookie_path: /oauth2/wechat/callback
-```
-
-#### CORS
-
-```yaml
-cors:
-  allow_credentials: true
-  allow_origins:
-    - http://localhost:3000
-```
-
-#### 限流
-
-```yaml
-ratelimit:
+# 主服务 dev.yaml
+kafka:
   enabled: true
-  prefix: ip-limiter
-  interval: 1m
-  limit: 100
+  brokers:
+    - localhost:9092
+  client_id: user-center
+
+# worker.yaml
+kafka:
+  enabled: true
+  brokers:
+    - localhost:9092
+  client_id: user-center-worker
+  consumer_group: user-center-worker
+
+# notification.yaml
+kafka:
+  enabled: true
+  brokers:
+    - localhost:9092
+  client_id: user-center-notification-service
+  consumer_group: user-center-notification-service
 ```
 
-#### 日志
+### 当你不想启用 Kafka 时
+
+你可以临时把开发配置改成：
 
 ```yaml
-log:
-  level: info
-  encoding: console
+kafka:
+  enabled: false
 ```
 
-#### 功能开关
+这时：
 
-```yaml
-feature:
-  enable_wechat_login: false
-  enable_sms_login: true
-  enable_debug_log: false
+- 主服务仍可启动
+- 注册事件不会投递
+- 签到会回退成**同步更新排行榜 + 同步写行为日志**
+- worker 不应启动
+
+---
+
+## 10. 异步业务事件说明
+
+### 10.1 注册事件：`user.registered`
+
+主服务注册成功后会先把事件写入 MySQL outbox，再由 relay 异步投递到 Kafka：
+
+```json
+{
+  "event_id": "uuid",
+  "type": "user.registered",
+  "user_id": 123,
+  "email": "123@qq.com",
+  "occurred_at": 1710000000000
+}
+```
+
+异步链路拆成两段：
+
+- `worker` 消费后给新用户初始化欢迎积分（默认 20 分）
+- `notification-service` 消费后异步写入欢迎消息到 Redis：`welcome:message:user:{user_id}`
+- 使用 MySQL outbox + 存储层幂等 + Redis 原子去重（done/processing）做保护
+
+### 10.2 行为事件：`user.activity`
+
+当前先落地了签到行为：
+
+```json
+{
+  "event_id": "uuid",
+  "type": "user.activity",
+  "user_id": 123,
+  "action": "checkin",
+  "biz_id": "20260410",
+  "points": 5,
+  "occurred_at": 1710000000000
+}
+```
+
+worker 消费后：
+
+- 异步更新排行榜
+- 异步写入行为日志到 Redis 列表
+
+Redis 行为日志 key 示例：
+
+```text
+activity:log:user:123
 ```
 
 ---
 
-## 8. 环境变量覆盖
+## 11. 手动验证流程
 
-支持对敏感配置做环境变量覆盖：
+### 11.1 注册并触发 `user.registered`
 
 ```bash
-DB_DSN
-REDIS_ADDR
-REDIS_PASSWORD
-REDIS_DB
-JWT_ACCESS_TOKEN_KEY
-JWT_REFRESH_TOKEN_KEY
-WECHAT_APP_ID
-WECHAT_APP_KEY
-WECHAT_STATE_TOKEN_KEY
+curl -X POST http://localhost:8081/user/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"kafka-demo@qq.com","password":"Hello@123","confirmed_password":"Hello@123"}'
 ```
 
-例如：
+如果 worker 正常运行，你可以到 MySQL 里查欢迎积分流水：
+
+```sql
+SELECT * FROM user_point_record_of_dbs WHERE biz_type = 'welcome';
+```
+
+> 表名如果你本地 GORM 命名策略不同，以实际表名为准；核心是查 `biz_type='welcome'`。
+
+如果 notification-service 正常运行，你也可以到 Redis 里查欢迎消息：
 
 ```bash
-export JWT_ACCESS_TOKEN_KEY=your-access-key
-export JWT_REFRESH_TOKEN_KEY=your-refresh-key
-go run . --config=config/dev.yaml
+docker compose exec redis redis-cli GET welcome:message:user:1
 ```
 
-PowerShell 示例：
-
-```powershell
-$env:JWT_ACCESS_TOKEN_KEY="your-access-key"
-$env:JWT_REFRESH_TOKEN_KEY="your-refresh-key"
-go run . --config=config/dev.yaml
-```
-
----
-
-## 9. API 路由
-
-### 用户相关
-
-前缀：`/user`
-
-- `POST /user/signup`：邮箱注册
-- `POST /user/login`：邮箱密码登录
-- `POST /user/logout`：退出登录
-- `POST /user/refresh_token`：刷新 token
-- `GET /user/profile`：获取当前用户信息
-- `POST /user/login_sms`：短信验证码登录
-- `POST /user/login_sms/code/send`：发送短信验证码
-
-### 微信登录
-
-前缀：`/oauth2/wechat`
-
-- `GET /oauth2/wechat/authurl`：获取微信扫码登录 URL
-- `ANY /oauth2/wechat/callback`：微信回调
-
----
-
-## 10. 鉴权说明
-
-项目使用 JWT 做登录态管理。
-
-登录成功后，服务会在响应头中返回：
-
-- `x-jwt-token`
-- `x-refresh-token`
-
-后续请求可通过 `Authorization: Bearer <token>` 携带访问令牌。
-
----
-
-## 11. 短信验证码说明
-
-当前默认短信服务是：
-
-```go
-ioc.InitSmsService() -> localsms.NewService()
-```
-
-也就是说，默认不会真的调用第三方短信平台，而是把验证码打印到控制台，便于本地开发调试。
-
-如果后续要接腾讯云、Twilio 等实现，可以在 `ioc/sms.go` 中切换具体 provider。
-
----
-
-## 12. 测试
-
-项目当前支持直接运行单元测试：
+### 11.2 登录拿 token
 
 ```bash
-go test ./...
+curl -X POST http://localhost:8081/user/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"kafka-demo@qq.com","password":"Hello@123"}' -i
 ```
 
-已经通过的测试主要覆盖：
+从响应头取：
 
-- 配置管理器
-- ioc 层
-- repository / dao / cache
-- service
-- web / jwt / wechat
+```text
+x-jwt-token
+```
 
-### integration / e2e 测试
-部分测试已通过 build tag 与普通单测隔离：
-
-- `integration`
-- `e2e`
-
-单独运行示例：
+### 11.3 签到并触发 `user.activity`
 
 ```bash
-go test -tags=integration ./internal/integration/...
-go test -tags=e2e ./internal/repository/cache/...
+curl -X POST http://localhost:8081/checkin \
+  -H "Authorization: Bearer 你的token"
+```
+
+### 11.4 查看行为日志是否写入 Redis
+
+```bash
+docker compose exec redis redis-cli -n 1 LRANGE activity:log:user:1 0 -1
+```
+
+### 11.5 查看排行榜是否被异步更新
+
+```bash
+curl http://localhost:8081/rank/daily
+curl http://localhost:8081/rank/monthly
 ```
 
 ---
 
-## 13. 已知限制
+## 12. 面试里可以怎么讲
 
-### 1）Wechat 配置当前为启动必填
-为了支持“请求级动态开启/关闭微信登录”，项目当前会始终初始化 Wechat Service，因此 `wechat.*` 相关配置需要在启动时就合法。
+### 12.1 为什么要加 Kafka
 
-### 2）当前只对部分配置做热更新
-目前真正会立刻生效的是：
+因为有些逻辑不适合阻塞在主请求里，比如：
 
-- `log.level`
-- `feature.*`
+- 注册成功后的欢迎积分初始化与欢迎消息写入
+- 行为事件记录
+- 排行榜更新
 
-其余配置修改后需要重启。
+这些逻辑天然适合异步化。
 
-### 3）短信服务默认是本地 mock
-当前适合本地开发与功能演示，不适合直接用于真实生产发短信。
+### 12.2 为什么这不算“大规模微服务”
 
----
+因为我没有为了拆而拆：
 
-## 14. 后续可继续完善的方向
+- 核心业务仍然集中在 `user-center`
+- 只把明显适合异步的后置逻辑拆给 `worker` 和 `notification-service`
+- 这两个服务仍然围绕同一个业务域协作，不涉及复杂的服务治理、注册发现、链路追踪和跨团队边界
+- 拆分目标是**解耦与演示工程能力**，不是追求服务数量
 
-- 接入真实短信平台（腾讯云 / Twilio）
-- 增加编辑资料、重置密码等用户能力
-- 增加更多 integration / e2e 测试
-- 配置中心扩展为远程配置（etcd / nacos 等）
-- 进一步完善 feature 动态开关的业务闭环
-- 增加 Dockerfile / 部署文档
+### 12.3 这版实现的亮点
 
----
-
-## 15. 适合怎么讲这个项目
-
-这个项目不只是“做了几个接口”，更适合作为一个**有工程化意识的后端实习项目**去讲。
-
-可以重点讲这几条：
-
-- 分层设计：`web -> service -> repository -> dao`
-- JWT 登录态与 Redis session 管理
-- Redis + Lua 实现验证码发送/校验限流
-- 微信 OAuth 登录接入
-- 统一配置体系改造：`viper + yaml + env override + watch`
-- Wire + IoC 做依赖注入
-- 单元测试与 mock
+- Kafka 基本概念落地：topic / producer / consumer / consumer group / offset
+- Go 接 Kafka：Sarama producer + consumer group
+- 业务事件设计：注册事件 + 行为事件
+- 轻量服务拆分：主服务 + worker + notification-service
+- 一致性增强：MySQL outbox + relay 异步投递 Kafka
+- 幂等保护：Redis 原子去重 + 存储层幂等
+- 降级策略：Kafka 关闭时，签到回退为同步更新排行榜和行为日志
 
 ---
 
-## 16. 启动命令速查
+## 13. 后续还能继续补什么
 
-### 启动依赖
+如果你后面还想继续拉高这个项目，可以按下面方向继续迭代：
 
-```bash
-docker compose up -d
-```
+1. 把欢迎消息从 Redis 升级成真正的站内信 / 邮件 / 短信发送渠道
+2. 把行为日志从 Redis list 升级成 Kafka 下游专门处理
+3. 给 Kafka 增加死信队列 / 重试策略
+4. 增加后台管理接口，查询行为日志与积分流水
+5. 给 outbox relay 增加监控、告警和后台补偿能力
 
-### 启动服务
+---
 
-```bash
-go run . --config=config/dev.yaml
-```
+## 14. 一句话总结
 
-### 运行单元测试
+这版 `user-center` 已经不是单纯的 CRUD 用户中心了，而是一个：
 
-```bash
-go test ./...
-```
-
+> **具备配置化、缓存、鉴权、签到排行、Kafka 异步解耦、轻量服务拆分意识的 Go 后端项目。**

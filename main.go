@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"os"
+	"time"
 	"user-center/ioc"
 
 	"go.uber.org/zap"
@@ -13,21 +15,50 @@ func main() {
 		panic(err)
 	}
 	cfg := cfgManager.App()
-	logger, atomicLevel, err := ioc.InitLogger(cfg.Log)
+
+	zapLogger, atomicLevel, err := ioc.InitLogger(cfg.Log)
 	if err != nil {
 		panic(err)
 	}
 	defer func() {
-		_ = logger.Sync()
+		_ = zapLogger.Sync()
 	}()
 
-	cfgManager.StartWatch(logger, atomicLevel)
-	appLogger := ioc.NewLogger(logger)
-	logger.Info("配置初始化完成", zap.String("config", cfgManager.Path()))
+	cfgManager.StartWatch(zapLogger, atomicLevel)
+
+	appLogger := ioc.NewLogger(zapLogger)
+	zapLogger.Info("配置初始化完成", zap.String("config", cfgManager.Path()))
+
+	var relayCancel context.CancelFunc
+	var relayClose func()
+
+	if cfg.Kafka.Enabled {
+		db := ioc.InitDB(&cfg)
+		relay := ioc.InitEventRelay(&cfg, db, appLogger)
+		if relay != nil {
+			ctx, cancel := context.WithCancel(context.Background())
+			relayCancel = cancel
+			relayClose = func() {
+				_ = relay.Close()
+			}
+			go relay.Run(ctx, time.Second)
+			zapLogger.Info("Outbox relay 启动成功",
+				zap.Strings("brokers", cfg.Kafka.Brokers),
+			)
+		}
+	}
+
 	server := InitWebServer(&cfg, cfgManager, appLogger)
-	logger.Info("HTTP 服务启动", zap.String("addr", cfg.Addr()))
+
+	zapLogger.Info("HTTP 服务启动", zap.String("addr", cfg.Addr()))
 	if err = server.Run(cfg.Addr()); err != nil {
-		logger.Error("HTTP 服务启动失败", zap.Error(err))
+		zapLogger.Error("HTTP 服务启动失败", zap.Error(err))
+		if relayCancel != nil {
+			relayCancel()
+		}
+		if relayClose != nil {
+			relayClose()
+		}
 		os.Exit(1)
 	}
 }

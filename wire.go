@@ -19,7 +19,8 @@ import (
 func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.Logger) *gin.Engine {
 	wire.Build(
 		//基础部分
-		ioc.InitDB, ioc.InitRedis, ioc.InitSmsService, ioc.InitWechatService, ioc.InitTX,
+		ioc.InitDB, ioc.InitRedis, ioc.InitSmsService,
+		ioc.InitWechatService, ioc.InitTX, ioc.InitEventPublisher,
 		// DAO 部分
 		dao.DAOSet,
 		cache.CacheSet,

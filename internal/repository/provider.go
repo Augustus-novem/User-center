@@ -17,4 +17,8 @@ var RepoSet = wire.NewSet(
 	wire.Bind(new(PointRepository), new(*PointRepositoryImpl)),
 	NewRankRepositoryImpl,
 	wire.Bind(new(RankRepository), new(*RankRepositoryImpl)),
+	NewRedisActivityLogRepository,
+	wire.Bind(new(ActivityLogRepository), new(*RedisActivityLogRepository)),
+	NewEventOutboxRepositoryImpl,
+	wire.Bind(new(EventOutboxRepository), new(*EventOutboxRepositoryImpl)),
 )

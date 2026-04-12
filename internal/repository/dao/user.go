@@ -21,6 +21,7 @@ type UserDAO interface {
 	FindById(ctx context.Context, id int64) (UserOfDB, error)
 	FindByPhone(ctx context.Context, phone string) (UserOfDB, error)
 	InsertAndReturn(ctx context.Context, u UserOfDB) (UserOfDB, error)
+	UpdateNonSensitive(ctx context.Context, u UserOfDB) error
 }
 
 type GORMUserDAO struct {
@@ -53,6 +54,18 @@ func (ud *GORMUserDAO) InsertAndReturn(ctx context.Context, user UserOfDB) (User
 	return user, err
 }
 
+func (ud *GORMUserDAO) UpdateNonSensitive(ctx context.Context, user UserOfDB) error {
+	user.Utime = time.Now().UnixMilli()
+	return dbFromCtx(ctx, ud.db).Model(&UserOfDB{}).
+		Where("id = ?", user.Id).
+		Updates(map[string]any{
+			"nickname": user.Nickname,
+			"about_me": user.AboutMe,
+			"birthday": user.Birthday,
+			"utime":    user.Utime,
+		}).Error
+}
+
 func (ud *GORMUserDAO) FindByEmail(ctx context.Context, email string) (UserOfDB, error) {
 	var user UserOfDB
 	err := dbFromCtx(ctx, ud.db).
@@ -82,6 +95,10 @@ type UserOfDB struct {
 	Email    sql.NullString `gorm:"type:varchar(255); uniqueIndex"`
 	Password string         `gorm:"type:varchar(255)"`
 	Phone    sql.NullString `gorm:"type:varchar(255);uniqueIndex"`
+	Birthday sql.NullInt64
+	// 昵称
+	Nickname sql.NullString
+	AboutMe  sql.NullString `gorm:"type=varchar(1024)"`
 	Ctime    int64
 	Utime    int64
 	Deleted  bool

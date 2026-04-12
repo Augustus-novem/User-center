@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"user-center/internal/events"
 	"user-center/internal/repository"
+	"user-center/pkg/logger"
 )
 
 type signInRepoStub struct {
@@ -61,6 +63,21 @@ func (s *pointRepoStub) AddSignInPoints(ctx context.Context, userID int64, signI
 		return nil
 	}
 	return s.addSignInPointsFn(ctx, userID, signInAt, points)
+}
+
+func (s *pointRepoStub) AddWelcomePoints(ctx context.Context, userID int64, points int) error {
+	return nil
+}
+
+type activityLogRepoStub struct {
+	appendFn func(ctx context.Context, entry repository.ActivityLogEntry) error
+}
+
+func (s *activityLogRepoStub) Append(ctx context.Context, entry repository.ActivityLogEntry) error {
+	if s.appendFn == nil {
+		return nil
+	}
+	return s.appendFn(ctx, entry)
 }
 
 type rankRepoStub struct {
@@ -163,7 +180,7 @@ func TestSignInServiceImpl_SignIn(t *testing.T) {
 				return err
 			},
 		}
-		svc := NewSignInService(repo, pointRepo, rankRepo, tx)
+		svc := NewSignInService(repo, pointRepo, rankRepo, &activityLogRepoStub{}, tx, events.NopPublisher{}, logger.NoOpLogger{})
 
 		res, err := svc.SignIn(context.Background(), 123)
 		if err != nil {
@@ -211,7 +228,7 @@ func TestSignInServiceImpl_SignIn(t *testing.T) {
 			rankCalled = true
 			return nil
 		}}
-		svc := NewSignInService(repo, pointRepo, rankRepo, &txStub{})
+		svc := NewSignInService(repo, pointRepo, rankRepo, &activityLogRepoStub{}, &txStub{}, events.NopPublisher{}, logger.NoOpLogger{})
 
 		res, err := svc.SignIn(context.Background(), 123)
 		if err != nil {
@@ -246,7 +263,7 @@ func TestSignInServiceImpl_SignIn(t *testing.T) {
 			rankCalled = true
 			return nil
 		}}
-		svc := NewSignInService(repo, pointRepo, rankRepo, &txStub{})
+		svc := NewSignInService(repo, pointRepo, rankRepo, &activityLogRepoStub{}, &txStub{}, events.NopPublisher{}, logger.NoOpLogger{})
 
 		_, err := svc.SignIn(context.Background(), 123)
 		if !errors.Is(err, pointErr) {

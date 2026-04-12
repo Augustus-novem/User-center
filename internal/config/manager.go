@@ -110,7 +110,7 @@ func (m *Manager) StartWatch(logger *zap.Logger, atomicLevel *zap.AtomicLevel) {
 }
 
 func warnStaticChange(logger *zap.Logger, oldCfg, newCfg AppConfig) {
-	warnings := make([]string, 0, 8)
+	warnings := make([]string, 0, 9)
 	if !reflect.DeepEqual(oldCfg.Server, newCfg.Server) {
 		warnings = append(warnings, "server")
 	}
@@ -119,6 +119,9 @@ func warnStaticChange(logger *zap.Logger, oldCfg, newCfg AppConfig) {
 	}
 	if !reflect.DeepEqual(oldCfg.Redis, newCfg.Redis) {
 		warnings = append(warnings, "redis")
+	}
+	if !reflect.DeepEqual(oldCfg.Kafka, newCfg.Kafka) {
+		warnings = append(warnings, "kafka")
 	}
 	if !reflect.DeepEqual(oldCfg.JWT, newCfg.JWT) {
 		warnings = append(warnings, "jwt")
@@ -142,6 +145,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.port", 8081)
 	v.SetDefault("server.mode", "debug")
 	v.SetDefault("redis.db", 1)
+	v.SetDefault("kafka.enabled", false)
+	v.SetDefault("kafka.brokers", []string{"localhost:9092"})
+	v.SetDefault("kafka.client_id", "user-center")
+	v.SetDefault("kafka.consumer_group", "user-center-worker")
 	v.SetDefault("jwt.access_token_ttl", "15m")
 	v.SetDefault("jwt.refresh_token_ttl", "168h")
 	v.SetDefault("jwt.idle_timeout", "168h")
@@ -181,6 +188,9 @@ func bindEnvs(v *viper.Viper) {
 	mustBindEnv(v, "redis.addr", "REDIS_ADDR")
 	mustBindEnv(v, "redis.password", "REDIS_PASSWORD")
 	mustBindEnv(v, "redis.db", "REDIS_DB")
+	mustBindEnv(v, "kafka.enabled", "KAFKA_ENABLED")
+	mustBindEnv(v, "kafka.client_id", "KAFKA_CLIENT_ID")
+	mustBindEnv(v, "kafka.consumer_group", "KAFKA_CLIENT_GROUP")
 	mustBindEnv(v, "jwt.access_token_key", "JWT_ACCESS_TOKEN_KEY")
 	mustBindEnv(v, "jwt.refresh_token_key", "JWT_REFRESH_TOKEN_KEY")
 	mustBindEnv(v, "wechat.app_id", "WECHAT_APP_ID")
@@ -204,6 +214,17 @@ func validate(cfg AppConfig) error {
 	}
 	if cfg.Redis.Addr == "" {
 		return fmt.Errorf("redis.addr 不能为空")
+	}
+	if cfg.Kafka.Enabled {
+		if len(cfg.Kafka.Brokers) == 0 {
+			return fmt.Errorf("kafka.brokers 不能为空")
+		}
+		if cfg.Kafka.ClientID == "" {
+			return fmt.Errorf("kafka.client_id 不能为空")
+		}
+		if cfg.Kafka.ConsumerGroup == "" {
+			return fmt.Errorf("kafka.consumer_group 不能为空")
+		}
 	}
 	if cfg.JWT.AccessTokenKey == "" {
 		return fmt.Errorf("jwt.access_token_key 不能为空")
@@ -240,26 +261,28 @@ func validate(cfg AppConfig) error {
 	if cfg.JWT.AbsoluteTimeout <= 0 {
 		return fmt.Errorf("jwt.absolute_timeout 必须大于 0")
 	}
-	if cfg.Wechat.AppID == "" {
-		return fmt.Errorf("wechat.app_id 不能为空")
-	}
-	if cfg.Wechat.AppKey == "" {
-		return fmt.Errorf("wechat.app_key 不能为空")
-	}
-	if cfg.Wechat.RedirectURL == "" {
-		return fmt.Errorf("wechat.redirect_url 不能为空")
-	}
-	if cfg.Wechat.StateCookieName == "" {
-		return fmt.Errorf("wechat.state_cookie_name 不能为空")
-	}
-	if cfg.Wechat.StateTokenKey == "" {
-		return fmt.Errorf("wechat.state_token_key 不能为空")
-	}
-	if cfg.Wechat.StateTokenTTL <= 0 {
-		return fmt.Errorf("wechat.state_token_ttl 必须大于 0")
-	}
-	if cfg.Wechat.StateCookiePath == "" {
-		return fmt.Errorf("wechat.state_cookie_path 不能为空")
+	if cfg.Feature.EnableWechatLogin {
+		if cfg.Wechat.AppID == "" {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.app_id 不能为空")
+		}
+		if cfg.Wechat.AppKey == "" {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.app_key 不能为空")
+		}
+		if cfg.Wechat.RedirectURL == "" {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.redirect_url 不能为空")
+		}
+		if cfg.Wechat.StateCookieName == "" {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_cookie_name 不能为空")
+		}
+		if cfg.Wechat.StateTokenKey == "" {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_token_key 不能为空")
+		}
+		if cfg.Wechat.StateTokenTTL <= 0 {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_token_ttl 必须大于 0")
+		}
+		if cfg.Wechat.StateCookiePath == "" {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_cookie_path 不能为空")
+		}
 	}
 	return nil
 }

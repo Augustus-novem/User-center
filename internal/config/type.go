@@ -13,6 +13,7 @@ type AppConfig struct {
 	Server    ServerConfig    `mapstructure:"server"`
 	DB        DBConfig        `mapstructure:"db"`
 	Redis     RedisConfig     `mapstructure:"redis"`
+	Kafka     KafkaConfig     `mapstructure:"kafka"`
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	Wechat    WechatConfig    `mapstructure:"wechat"`
 	CORS      CORSConfig      `mapstructure:"cors"`
@@ -39,6 +40,13 @@ type RedisConfig struct {
 	Addr     string `mapstructure:"addr"`
 	Password string `mapstructure:"password"`
 	DB       int    `mapstructure:"db"`
+}
+
+type KafkaConfig struct {
+	Enabled       bool     `mapstructure:"enabled"`
+	Brokers       []string `mapstructure:"brokers"`
+	ClientID      string   `mapstructure:"client_id"`
+	ConsumerGroup string   `mapstructure:"consumer_group"`
 }
 
 type JWTConfig struct {

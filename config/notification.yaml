@@ -1,6 +1,6 @@
 server:
-  name: user-center
-  port: 8081
+  name: notification-service
+  port: 8083
   mode: debug
 
 db:
@@ -15,8 +15,8 @@ kafka:
   enabled: true
   brokers:
     - localhost:9092
-  client_id: user-center
-  consumer_group: user-center-worker
+  client_id: user-center-notification-service
+  consumer_group: user-center-notification-service
 
 jwt:
   access_token_key: 48lJdJICc98rxdTD47otl9y3w78PGePJn9QW0vlgCXD
@@ -25,6 +25,7 @@ jwt:
   refresh_token_ttl: 168h
   idle_timeout: 168h
   absolute_timeout: 720h
+
 wechat:
   app_id: ""
   app_key: ""
@@ -73,7 +74,7 @@ log:
   development: true
   file:
     enabled: true
-    filename: logs/user-center.log
+    filename: logs/notification-service.log
     max_size: 100
     max_backups: 5
     max_age: 30

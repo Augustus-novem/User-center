@@ -11,4 +11,6 @@ var DAOSet = wire.NewSet(
 	wire.Bind(new(SignInDAO), new(*GORMSignInDAO)),
 	NewGORMPointDAO,
 	wire.Bind(new(PointDAO), new(*GORMPointDAO)),
+	NewGORMEventOutboxDAO,
+	wire.Bind(new(EventOutboxDAO), new(*GORMEventOutboxDAO)),
 )

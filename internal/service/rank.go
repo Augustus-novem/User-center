@@ -112,6 +112,9 @@ func (s *RankServiceImpl) enrichOne(ctx context.Context, userID int64, rank int6
 }
 
 func buildDisplayName(user domain.User) string {
+	if user.NickName != "" {
+		return user.NickName
+	}
 	return fmt.Sprintf("用户：%s", strconv.FormatInt(user.Id, 10))
 }
 

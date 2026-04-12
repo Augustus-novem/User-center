@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"time"
 	"user-center/internal/domain"
 	"user-center/internal/service"
 	jwt2 "user-center/internal/web/jwt"
@@ -190,7 +191,41 @@ func (u *UserHandler) Profile(ctx *gin.Context) {
 }
 
 func (u *UserHandler) Edit(ctx *gin.Context) {
-
+	type Req struct {
+		Nickname string `json:"nickname"`
+		Birthday string `json:"birthday"`
+		AboutMe  string `json:"about_me"`
+	}
+	var req Req
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		JSONBadRequest(ctx, "请求参数错误")
+		return
+	}
+	if req.Nickname == "" {
+		JSONInternalServerError(ctx, "昵称不能为空")
+		return
+	}
+	if len(req.AboutMe) > 1024 {
+		JSONInternalServerError(ctx, "个人信息过长")
+		return
+	}
+	birthday, err := time.Parse(time.DateOnly, req.Birthday)
+	if err != nil {
+		JSONInternalServerError(ctx, "日期格式不正确")
+		return
+	}
+	uc := ctx.MustGet("user").(*jwt2.UserClaims)
+	err = u.svc.UpdateNonSensitiveInfo(ctx.Request.Context(), domain.User{
+		Id:       uc.Id,
+		NickName: req.Nickname,
+		AboutMe:  req.AboutMe,
+		Birthday: birthday,
+	})
+	if err != nil {
+		JSONInternalServerError(ctx, "系统错误")
+		return
+	}
+	JSONOK(ctx, "修改成功", nil)
 }
 
 func (u *UserHandler) Login(ctx *gin.Context) {

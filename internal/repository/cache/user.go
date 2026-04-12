@@ -13,6 +13,7 @@ import (
 type UserCache interface {
 	Get(ctx context.Context, id int64) (domain.User, error)
 	Set(ctx context.Context, user domain.User) error
+	Delete(ctx context.Context, id int64) error
 }
 
 type RedisUserCache struct {
@@ -49,6 +50,10 @@ func (cache *RedisUserCache) Set(ctx context.Context, user domain.User) error {
 		return err
 	}
 	return cache.cmd.Set(ctx, key, data, cache.expiration).Err()
+}
+
+func (cache *RedisUserCache) Delete(ctx context.Context, id int64) error {
+	return cache.cmd.Del(ctx, cache.key(id)).Err()
 }
 
 func (cache *RedisUserCache) key(id int64) string {

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"time"
 	"user-center/internal/domain"
 	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
@@ -19,6 +20,7 @@ type UserRepository interface {
 	FindByPhone(ctx context.Context, phone string) (domain.User, error)
 	FindByID(ctx context.Context, id int64) (domain.User, error)
 	FindByEmail(ctx context.Context, email string) (domain.User, error)
+	Update(ctx context.Context, u domain.User) error
 }
 
 type CachedUserRepository struct {
@@ -93,12 +95,27 @@ func (ur *CachedUserRepository) FindByPhone(ctx context.Context, phone string) (
 	return ur.entityToDomain(user), err
 }
 
+func (ur *CachedUserRepository) Update(ctx context.Context, user domain.User) error {
+	err := ur.dao.UpdateNonSensitive(ctx, ur.domainToEntity(user))
+	if err != nil {
+		return err
+	}
+	return ur.cache.Delete(ctx, user.Id)
+}
+
 func (ur *CachedUserRepository) entityToDomain(ue dao.UserOfDB) domain.User {
+	var birthday time.Time
+	if ue.Birthday.Valid {
+		birthday = time.UnixMilli(ue.Birthday.Int64)
+	}
 	return domain.User{
 		Id:       ue.Id,
 		Email:    ue.Email.String,
 		Password: ue.Password,
 		Phone:    ue.Phone.String,
+		NickName: ue.Nickname.String,
+		AboutMe:  ue.AboutMe.String,
+		Birthday: birthday,
 	}
 }
 
@@ -114,5 +131,17 @@ func (ur *CachedUserRepository) domainToEntity(user domain.User) dao.UserOfDB {
 			Valid:  user.Phone != "",
 		},
 		Password: user.Password,
+		Birthday: sql.NullInt64{
+			Int64: user.Birthday.UnixMilli(),
+			Valid: !user.Birthday.IsZero(),
+		},
+		Nickname: sql.NullString{
+			String: user.NickName,
+			Valid:  user.NickName != "",
+		},
+		AboutMe: sql.NullString{
+			String: user.AboutMe,
+			Valid:  user.AboutMe != "",
+		},
 	}
 }

@@ -1,6 +1,6 @@
 server:
-  name: user-center
-  port: 8081
+  name: worker
+  port: 8082
   mode: debug
 
 db:
@@ -15,7 +15,7 @@ kafka:
   enabled: true
   brokers:
     - localhost:9092
-  client_id: user-center
+  client_id: user-center-worker
   consumer_group: user-center-worker
 
 jwt:
@@ -25,6 +25,7 @@ jwt:
   refresh_token_ttl: 168h
   idle_timeout: 168h
   absolute_timeout: 720h
+
 wechat:
   app_id: ""
   app_key: ""
@@ -73,7 +74,7 @@ log:
   development: true
   file:
     enabled: true
-    filename: logs/user-center.log
+    filename: logs/worker.log
     max_size: 100
     max_backups: 5
     max_age: 30

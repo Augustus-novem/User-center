@@ -11,6 +11,14 @@ redis:
   password: ""
   db: 2
 
+kafka:
+  enabled: false
+  brokers:
+    - localhost:9092
+  client_id: user-center-test
+  consumer_group: user-center-worker-test
+
+
 jwt:
   access_token_key: test-access-token-key-please-change
   refresh_token_key: test-refresh-token-key-please-change

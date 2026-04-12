@@ -10,11 +10,12 @@ import (
 )
 
 type userDAOStub struct {
-	insertFn      func(ctx context.Context, user dao.UserOfDB) error
-	insertRetFn   func(ctx context.Context, user dao.UserOfDB) (dao.UserOfDB, error)
-	findByEmailFn func(ctx context.Context, email string) (dao.UserOfDB, error)
-	findByIDFn    func(ctx context.Context, id int64) (dao.UserOfDB, error)
-	findByPhoneFn func(ctx context.Context, phone string) (dao.UserOfDB, error)
+	insertFn             func(ctx context.Context, user dao.UserOfDB) error
+	insertRetFn          func(ctx context.Context, user dao.UserOfDB) (dao.UserOfDB, error)
+	findByEmailFn        func(ctx context.Context, email string) (dao.UserOfDB, error)
+	findByIDFn           func(ctx context.Context, id int64) (dao.UserOfDB, error)
+	findByPhoneFn        func(ctx context.Context, phone string) (dao.UserOfDB, error)
+	updateNonSensitiveFn func(ctx context.Context, user dao.UserOfDB) error
 }
 
 func (s *userDAOStub) Insert(ctx context.Context, user dao.UserOfDB) error {
@@ -52,9 +53,17 @@ func (s *userDAOStub) FindByPhone(ctx context.Context, phone string) (dao.UserOf
 	return s.findByPhoneFn(ctx, phone)
 }
 
+func (s *userDAOStub) UpdateNonSensitive(ctx context.Context, user dao.UserOfDB) error {
+	if s.updateNonSensitiveFn == nil {
+		return nil
+	}
+	return s.updateNonSensitiveFn(ctx, user)
+}
+
 type userCacheStub struct {
-	getFn func(ctx context.Context, id int64) (domain.User, error)
-	setFn func(ctx context.Context, user domain.User) error
+	getFn    func(ctx context.Context, id int64) (domain.User, error)
+	setFn    func(ctx context.Context, user domain.User) error
+	deleteFn func(ctx context.Context, id int64) error
 }
 
 func (s *userCacheStub) Get(ctx context.Context, id int64) (domain.User, error) {
@@ -69,6 +78,13 @@ func (s *userCacheStub) Set(ctx context.Context, user domain.User) error {
 		return nil
 	}
 	return s.setFn(ctx, user)
+}
+
+func (s *userCacheStub) Delete(ctx context.Context, id int64) error {
+	if s.deleteFn == nil {
+		return nil
+	}
+	return s.deleteFn(ctx, id)
 }
 
 func TestCachedUserRepository_FindByID(t *testing.T) {
