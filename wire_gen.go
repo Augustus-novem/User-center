@@ -50,10 +50,13 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	redisRankCache := cache.NewRedisRankCache(cmdable)
 	rankRepositoryImpl := repository.NewRankRepositoryImpl(redisRankCache)
 	redisActivityLogRepository := repository.NewRedisActivityLogRepository(cmdable)
-	signInServiceImpl := service.NewSignInService(signInRepositoryImpl, pointRepositoryImpl, rankRepositoryImpl, redisActivityLogRepository, transaction, publisher, l)
+	signInServiceImpl := service.NewSignInServiceImpl(signInRepositoryImpl, pointRepositoryImpl, rankRepositoryImpl, redisActivityLogRepository, transaction, publisher, l)
 	checkInHandler := web.NewCheckInHandler(signInServiceImpl)
 	rankServiceImpl := service.NewRankServiceImpl(rankRepositoryImpl, cachedUserRepository)
 	rankHandler := web.NewRankHandler(rankServiceImpl)
-	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler)
+	client := ioc.InitRAGClient(cfg)
+	ragServiceImpl := service.NewRAGServiceImpl(client, cfg)
+	ragHandler := ioc.InitRAGHandler(ragServiceImpl)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, ragHandler)
 	return engine
 }

@@ -7,8 +7,10 @@ var ServiceSet = wire.NewSet(
 	wire.Bind(new(UserService), new(*UserServiceImpl)),
 	NewSMSCodeService,
 	wire.Bind(new(CodeService), new(*SMSCodeService)),
-	NewSignInService,
+	NewSignInServiceImpl,
 	wire.Bind(new(SignInService), new(*SignInServiceImpl)),
 	NewRankServiceImpl,
 	wire.Bind(new(RankService), new(*RankServiceImpl)),
+	NewRAGServiceImpl,
+	wire.Bind(new(RAGService), new(*RAGServiceImpl)),
 )

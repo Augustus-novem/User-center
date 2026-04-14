@@ -21,7 +21,8 @@ import (
 
 func InitWebServer(cfg *config.AppConfig, funcs []gin.HandlerFunc,
 	userHdl *web.UserHandler, oauth2Hdl *web.OAuth2WechatHandler,
-	checkInHdl *web.CheckInHandler, rankHdl *web.RankHandler) *gin.Engine {
+	checkInHdl *web.CheckInHandler, rankHdl *web.RankHandler,
+	ragHdl *web.RAGHandler) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 	server := gin.New()
 	server.Use(gin.Recovery())
@@ -30,6 +31,7 @@ func InitWebServer(cfg *config.AppConfig, funcs []gin.HandlerFunc,
 	oauth2Hdl.RegisterRoutes(server)
 	checkInHdl.RegisterRoutes(server)
 	rankHdl.RegisterRoutes(server)
+	ragHdl.RegisterRoutes(server)
 	return server
 }
 

@@ -180,7 +180,7 @@ func TestSignInServiceImpl_SignIn(t *testing.T) {
 				return err
 			},
 		}
-		svc := NewSignInService(repo, pointRepo, rankRepo, &activityLogRepoStub{}, tx, events.NopPublisher{}, logger.NoOpLogger{})
+		svc := NewSignInServiceImpl(repo, pointRepo, rankRepo, &activityLogRepoStub{}, tx, events.NopPublisher{}, logger.NoOpLogger{})
 
 		res, err := svc.SignIn(context.Background(), 123)
 		if err != nil {
@@ -228,7 +228,7 @@ func TestSignInServiceImpl_SignIn(t *testing.T) {
 			rankCalled = true
 			return nil
 		}}
-		svc := NewSignInService(repo, pointRepo, rankRepo, &activityLogRepoStub{}, &txStub{}, events.NopPublisher{}, logger.NoOpLogger{})
+		svc := NewSignInServiceImpl(repo, pointRepo, rankRepo, &activityLogRepoStub{}, &txStub{}, events.NopPublisher{}, logger.NoOpLogger{})
 
 		res, err := svc.SignIn(context.Background(), 123)
 		if err != nil {
@@ -263,7 +263,7 @@ func TestSignInServiceImpl_SignIn(t *testing.T) {
 			rankCalled = true
 			return nil
 		}}
-		svc := NewSignInService(repo, pointRepo, rankRepo, &activityLogRepoStub{}, &txStub{}, events.NopPublisher{}, logger.NoOpLogger{})
+		svc := NewSignInServiceImpl(repo, pointRepo, rankRepo, &activityLogRepoStub{}, &txStub{}, events.NopPublisher{}, logger.NoOpLogger{})
 
 		_, err := svc.SignIn(context.Background(), 123)
 		if !errors.Is(err, pointErr) {

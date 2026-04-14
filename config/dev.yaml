@@ -84,3 +84,10 @@ feature:
   enable_wechat_login: false
   enable_sms_login: true
   enable_debug_log: false
+
+rag:
+  enabled: true
+  base_url: http://127.0.0.1:18081
+  timeout: 5s
+  default_top_k: 3
+  use_llm: true

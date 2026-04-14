@@ -20,6 +20,7 @@ type AppConfig struct {
 	RateLimit RateLimitConfig `mapstructure:"ratelimit"`
 	Log       LogConfig       `mapstructure:"log"`
 	Feature   FeatureConfig   `mapstructure:"feature"`
+	RAG       RAGConfig       `mapstructure:"rag"`
 }
 
 func (conf AppConfig) Addr() string {
@@ -109,6 +110,14 @@ type FeatureConfig struct {
 	EnableWechatLogin bool `mapstructure:"enable_wechat_login"`
 	EnableSMSLogin    bool `mapstructure:"enable_sms_login"`
 	EnableDebugLog    bool `mapstructure:"enable_debug_log"`
+}
+
+type RAGConfig struct {
+	Enabled     bool          `mapstructure:"enabled"`
+	BaseURL     string        `mapstructure:"base_url"`
+	Timeout     time.Duration `mapstructure:"timeout"`
+	DefaultTopK int           `mapstructure:"default_top_k"`
+	UseLLM      bool          `mapstructure:"use_llm"`
 }
 
 type DynamicConfig struct {

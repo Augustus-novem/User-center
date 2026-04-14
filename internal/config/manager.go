@@ -135,6 +135,9 @@ func warnStaticChange(logger *zap.Logger, oldCfg, newCfg AppConfig) {
 	if !reflect.DeepEqual(oldCfg.RateLimit, newCfg.RateLimit) {
 		warnings = append(warnings, "ratelimit")
 	}
+	if !reflect.DeepEqual(oldCfg.RAG, newCfg.RAG) {
+		warnings = append(warnings, "rag")
+	}
 	if len(warnings) > 0 {
 		logger.Warn("检测到静态配置变更；当前进程不会热更新这些模块，需重启后生效", zap.Strings("keys", warnings))
 	}
@@ -181,6 +184,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("feature.enable_wechat_login", true)
 	v.SetDefault("feature.enable_sms_login", true)
 	v.SetDefault("feature.enable_debug_log", false)
+	v.SetDefault("rag.enabled", false)
+	v.SetDefault("rag.base_url", "http://127.0.0.1:18081")
+	v.SetDefault("rag.timeout", "5s")
+	v.SetDefault("rag.default_top_k", 3)
+	v.SetDefault("rag.use_llm", true)
 }
 
 func bindEnvs(v *viper.Viper) {
@@ -196,6 +204,11 @@ func bindEnvs(v *viper.Viper) {
 	mustBindEnv(v, "wechat.app_id", "WECHAT_APP_ID")
 	mustBindEnv(v, "wechat.app_key", "WECHAT_APP_KEY")
 	mustBindEnv(v, "wechat.state_token_key", "WECHAT_STATE_TOKEN_KEY")
+	mustBindEnv(v, "rag.enabled", "RAG_ENABLED")
+	mustBindEnv(v, "rag.base_url", "RAG_BASE_URL")
+	mustBindEnv(v, "rag.timeout", "RAG_TIMEOUT")
+	mustBindEnv(v, "rag.default_top_k", "RAG_DEFAULT_TOP_K")
+	mustBindEnv(v, "rag.use_llm", "RAG_USE_LLM")
 }
 
 func mustBindEnv(v *viper.Viper, key string, envs ...string) {
@@ -231,6 +244,17 @@ func validate(cfg AppConfig) error {
 	}
 	if cfg.JWT.RefreshTokenKey == "" {
 		return fmt.Errorf("jwt.refresh_token_key 不能为空")
+	}
+	if cfg.RAG.Enabled {
+		if cfg.RAG.BaseURL == "" {
+			return fmt.Errorf("rag.base_url 不能为空")
+		}
+		if cfg.RAG.Timeout <= 0 {
+			return fmt.Errorf("rag.timeout 必须大于 0")
+		}
+		if cfg.RAG.DefaultTopK <= 0 {
+			return fmt.Errorf("rag.default_top_k 必须大于 0")
+		}
 	}
 	if cfg.Log.File.Enabled {
 		if cfg.Log.File.Filename == "" {

@@ -34,7 +34,7 @@ type SignInServiceImpl struct {
 	logger          logger.Logger
 }
 
-func NewSignInService(repo repository.SignInRepository,
+func NewSignInServiceImpl(repo repository.SignInRepository,
 	pointRepo repository.PointRepository,
 	rankRepo repository.RankRepository,
 	activityLogRepo repository.ActivityLogRepository,
