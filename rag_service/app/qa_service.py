@@ -91,8 +91,28 @@ def _no_hit_answer() -> str:
     return "根据当前知识库未检索到达到阈值的相关内容，暂时无法回答该问题。"
 
 
-def _fallback_refusal_answer() -> str:
-    return "已检索到相关片段，但当前未使用可用的 LLM 生成答案。为避免基于片段硬答，暂不直接给出结论，请结合参考片段人工确认。"
+def _extractive_answer(hits: list[SearchHit]) -> str:
+    snippets: list[str] = []
+
+    for hit in hits[:2]:
+        text = _clean_text(hit.content)
+        if not text:
+            continue
+
+        first_line = text.split("\n", 1)[0].strip()
+        snippet = first_line if len(first_line) >= 12 else text[:120].strip()
+        snippet = snippet[:120].rstrip("，,；;。") + "。"
+
+        if snippet not in snippets:
+            snippets.append(snippet)
+
+    if not snippets:
+        return _no_hit_answer()
+
+    if len(snippets) == 1:
+        return f"根据当前知识库，{snippets[0]}"
+
+    return f"根据当前知识库，{snippets[0]} 补充说明：{snippets[1]}"
 
 
 def _call_openai_compatible_llm(
@@ -180,8 +200,8 @@ def answer_question(
             logger.exception("llm answering failed, fallback to extractive mode: %s", exc)
 
     return AskResult(
-        answer=_fallback_refusal_answer(),
+        answer=_extractive_answer(hits),
         references=references,
-        mode="fallback_refusal",
+        mode="extractive",
         context=context,
     )

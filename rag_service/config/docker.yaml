@@ -1,0 +1,31 @@
+server:
+  name: rag_service
+  host: 0.0.0.0
+  port: 18081
+  mode: dev
+
+knowledge_base:
+  dir: knowledge_base
+  chunk_size: 200
+  chunk_overlap: 50
+
+qdrant:
+  host: qdrant
+  port: 6333
+  collection_name: knowledge_chunks
+  embedding_model: BAAI/bge-small-zh-v1.5
+  top_k: 5
+  min_score: 0.3
+  batch_size: 64
+  timeout: 10
+  recreate_on_startup: false
+  model_cache_dir: /app/.cache/fastembed
+
+llm:
+  enabled: false
+  base_url: ""
+  api_key: ""
+  model: ""
+  timeout: 30
+  temperature: 0.2
+  max_tokens: 512

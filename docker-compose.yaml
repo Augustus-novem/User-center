@@ -5,30 +5,33 @@ services:
     command: --default-authentication-plugin=mysql_native_password
     environment:
       MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: user_center
     volumes:
-      #      设置初始化脚本
-      - ./script/mysql/:/docker-entrypoint-initdb.d/
+      - ./script/mysql:/docker-entrypoint-initdb.d
+      - mysql_data:/var/lib/mysql
     ports:
-      #      注意这里我映射为了 13316 端口
       - "13316:3306"
+
   redis:
-    image: 'bitnami/redis:latest'
+    image: bitnami/redis:latest
+    restart: always
     environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      ALLOW_EMPTY_PASSWORD: "yes"
     ports:
-      - '6379:6379'
+      - "6379:6379"
+
   kafka:
     image: apache/kafka:4.1.2
     restart: always
     hostname: kafka
     ports:
-      - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,EXTERNAL://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
@@ -36,6 +39,7 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
   qdrant:
     image: qdrant/qdrant:latest
     restart: always
@@ -44,5 +48,72 @@ services:
     volumes:
       - qdrant_storage:/qdrant/storage
 
+  rag-service:
+    build:
+      context: .
+      dockerfile: rag_service/Dockerfile
+    restart: always
+    environment:
+      RAG_SERVICE_CONFIG: /app/config/docker.yaml
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    volumes:
+      - ./rag_service/knowledge_base:/app/knowledge_base
+      - ./rag_service/config/docker.yaml:/app/config/docker.yaml:ro
+      - rag_model_cache:/app/.cache/fastembed
+    depends_on:
+      - qdrant
+    ports:
+      - "18081:18081"
+
+  user-center:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_PATH: .
+    restart: always
+    command: ["--config", "config/docker.yaml"]
+    environment:
+      JWT_ACCESS_TOKEN_KEY: ${JWT_ACCESS_TOKEN_KEY}
+      JWT_REFRESH_TOKEN_KEY: ${JWT_REFRESH_TOKEN_KEY}
+      WECHAT_STATE_TOKEN_KEY: ${WECHAT_STATE_TOKEN_KEY:-dummy-state-key}
+    depends_on:
+      - mysql8
+      - redis
+      - kafka
+      - rag-service
+    ports:
+      - "8081:8081"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_PATH: ./cmd/worker
+    restart: always
+    command: ["--config", "config/worker.docker.yaml"]
+    depends_on:
+      - mysql8
+      - redis
+      - kafka
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_PATH: ./cmd/notification-service
+    restart: always
+    command: ["--config", "config/notification.docker.yaml"]
+    depends_on:
+      - redis
+      - kafka
+
 volumes:
+  mysql_data:
   qdrant_storage:
+  rag_model_cache:

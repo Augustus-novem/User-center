@@ -1,0 +1,72 @@
+server:
+  name: worker
+  port: 8082
+  mode: release
+
+db:
+  dsn: root:root@tcp(mysql8:3306)/user_center?charset=utf8mb4&parseTime=True&loc=Local
+
+redis:
+  addr: redis:6379
+  password: ""
+  db: 1
+
+kafka:
+  enabled: true
+  brokers:
+    - kafka:9092
+  client_id: user-center-worker
+  consumer_group: user-center-worker
+
+jwt:
+  access_token_key: dummy
+  refresh_token_key: dummy
+  access_token_ttl: 15m
+  refresh_token_ttl: 168h
+  idle_timeout: 168h
+  absolute_timeout: 720h
+
+wechat:
+  app_id: ""
+  app_key: ""
+  redirect_url: http://localhost:8081/oauth2/wechat/callback
+  state_cookie_name: jwt-state
+  state_token_key: dummy
+  state_token_ttl: 10m
+  state_cookie_path: /oauth2/wechat/callback
+
+cors:
+  allow_credentials: true
+  allow_origins: [http://localhost:3000]
+  allow_methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+  allow_headers: [Content-Type, Authorization, X-Refresh-Token]
+  expose_headers: [x-jwt-token, x-refresh-token]
+  max_age: 12h
+
+ratelimit:
+  enabled: true
+  prefix: ip-limiter
+  interval: 1m
+  limit: 100
+
+log:
+  level: info
+  encoding: console
+  output_paths: [stdout]
+  error_output_paths: [stderr]
+  disable_caller: false
+  disable_stacktrace: false
+  development: false
+  file:
+    enabled: false
+    filename: logs/worker.log
+    max_size: 100
+    max_backups: 5
+    max_age: 30
+    local_time: true
+    compress: false
+
+feature:
+  enable_wechat_login: false
+  enable_sms_login: true
+  enable_debug_log: false
