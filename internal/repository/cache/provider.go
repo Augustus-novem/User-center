@@ -16,6 +16,8 @@ var CacheSet = wire.NewSet(
 	wire.Bind(new(SignInCache), new(*RedisSignInCache)),
 	NewRedisNoteCache,
 	wire.Bind(new(NoteCache), new(*RedisNoteCache)),
+	NewMemoryNoteLocalCache,
+	wire.Bind(new(NoteLocalCache), new(*MemoryNoteLocalCache)),
 	NewRankConsistencyCache,
 	NewRedisIdempotentCacheWithPrefix,
 	wire.Bind(new(IdempotentCache), new(*RedisIdempotentCache)),

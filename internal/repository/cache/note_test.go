@@ -59,8 +59,8 @@ func TestRedisNoteCache_GetMiss(t *testing.T) {
 		return redis.NewStringResult("", redis.Nil)
 	}})
 	_, err := c.Get(context.Background(), 1)
-	if !errors.Is(err, redis.Nil) {
-		t.Fatalf("want redis.Nil, got %v", err)
+	if !errors.Is(err, ErrNoteCacheMiss) {
+		t.Fatalf("want ErrNoteCacheMiss, got %v", err)
 	}
 }
 

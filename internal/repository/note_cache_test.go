@@ -20,6 +20,10 @@ type noteCacheStub struct {
 	deleteFn      func(ctx context.Context, id int64) error
 }
 
+func newCachedNoteRepositoryForTest(inner *NoteRepositoryImpl, noteCache cache.NoteCache, l logger.Logger) *CachedNoteRepository {
+	return NewCachedNoteRepository(inner, noteCache, cache.NewMemoryNoteLocalCache(), l)
+}
+
 func (s *noteCacheStub) Get(ctx context.Context, id int64) (domain.Note, error) {
 	return s.getFn(ctx, id)
 }
@@ -48,7 +52,7 @@ func (s *noteCacheStub) Delete(ctx context.Context, id int64) error {
 func TestCachedNoteRepository_FindByIDHit(t *testing.T) {
 	t.Parallel()
 	want := domain.Note{ID: 9, Title: "cache hit"}
-	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{
 		findByIDFn: func(ctx context.Context, id int64) (dao.NoteOfDB, error) {
 			t.Fatal("database must not be called on cache hit")
 			return dao.NoteOfDB{}, nil
@@ -67,7 +71,7 @@ func TestCachedNoteRepository_FindByIDMissLoadsAndCaches(t *testing.T) {
 	t.Parallel()
 	wantErr := errors.New("cache miss")
 	var cached domain.Note
-	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{
 		findByIDFn: func(ctx context.Context, id int64) (dao.NoteOfDB, error) {
 			return dao.NoteOfDB{Id: id, AuthorId: 2, Title: "database", Status: domain.NoteStatusPublished}, nil
 		},
@@ -89,7 +93,7 @@ func TestCachedNoteRepository_FindByIDMissLoadsAndCaches(t *testing.T) {
 
 func TestCachedNoteRepository_FindByIDNegativeHitSkipsDatabase(t *testing.T) {
 	t.Parallel()
-	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{
 		findByIDFn: func(ctx context.Context, id int64) (dao.NoteOfDB, error) {
 			t.Fatal("database must not be called on negative cache hit")
 			return dao.NoteOfDB{}, nil
@@ -107,7 +111,7 @@ func TestCachedNoteRepository_FindByIDNegativeHitSkipsDatabase(t *testing.T) {
 func TestCachedNoteRepository_FindByIDNotFoundWritesNegativeEntry(t *testing.T) {
 	t.Parallel()
 	var negativeID int64
-	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{}), &noteCacheStub{
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{}), &noteCacheStub{
 		getFn: func(ctx context.Context, id int64) (domain.Note, error) {
 			return domain.Note{}, errors.New("cache miss")
 		},
@@ -146,7 +150,7 @@ func TestCachedNoteRepository_CoalescesConcurrentMisses(t *testing.T) {
 			return nil
 		},
 	}
-	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{
 		findByIDFn: func(ctx context.Context, id int64) (dao.NoteOfDB, error) {
 			originCalls.Add(1)
 			time.Sleep(20 * time.Millisecond)
@@ -183,10 +187,70 @@ func TestCachedNoteRepository_CoalescesConcurrentMisses(t *testing.T) {
 	}
 }
 
+func TestCachedNoteRepository_LocalHitSkipsRedis(t *testing.T) {
+	t.Parallel()
+	var redisReads atomic.Int64
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{}), &noteCacheStub{
+		getFn: func(ctx context.Context, id int64) (domain.Note, error) {
+			redisReads.Add(1)
+			return domain.Note{ID: id, Title: "redis"}, nil
+		},
+	}, logger.NewNoOpLogger())
+
+	for range 2 {
+		note, err := repo.FindByID(context.Background(), 8)
+		if err != nil || note.Title != "redis" {
+			t.Fatalf("note=%+v err=%v", note, err)
+		}
+	}
+	if got := redisReads.Load(); got != 1 {
+		t.Fatalf("want one Redis read, got %d", got)
+	}
+}
+
+func TestCachedNoteRepository_RedisFailureFallsBackToOrigin(t *testing.T) {
+	t.Parallel()
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{
+		findByIDFn: func(ctx context.Context, id int64) (dao.NoteOfDB, error) {
+			return dao.NoteOfDB{Id: id, Title: "origin", Status: domain.NoteStatusPublished}, nil
+		},
+	}), &noteCacheStub{
+		getFn: func(ctx context.Context, id int64) (domain.Note, error) {
+			return domain.Note{}, errors.New("redis unavailable")
+		},
+		setFn: func(ctx context.Context, note domain.Note) error {
+			return errors.New("redis unavailable")
+		},
+	}, logger.NewNoOpLogger())
+
+	note, err := repo.FindByID(context.Background(), 18)
+	if err != nil || note.ID != 18 || note.Title != "origin" {
+		t.Fatalf("note=%+v err=%v", note, err)
+	}
+}
+
+func TestCachedNoteRepository_DeleteInvalidatesLocalCache(t *testing.T) {
+	t.Parallel()
+	local := cache.NewMemoryNoteLocalCache()
+	local.Set(domain.Note{ID: 31})
+	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{}), &noteCacheStub{
+		getFn: func(ctx context.Context, id int64) (domain.Note, error) {
+			return domain.Note{}, cache.ErrNoteCacheMiss
+		},
+	}, local, logger.NewNoOpLogger())
+
+	if err := repo.SoftDelete(context.Background(), 31, 2); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := local.Get(31); !errors.Is(err, cache.ErrNoteCacheMiss) {
+		t.Fatalf("want local miss after delete, got %v", err)
+	}
+}
+
 func TestCachedNoteRepository_CreateAndDeleteInvalidate(t *testing.T) {
 	t.Parallel()
 	var invalidated []int64
-	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{
+	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{
 		insertFn: func(ctx context.Context, note dao.NoteOfDB) (dao.NoteOfDB, error) {
 			note.Id = 6
 			return note, nil

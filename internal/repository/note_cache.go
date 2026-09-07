@@ -14,19 +14,21 @@ import (
 type CachedNoteRepository struct {
 	inner          *NoteRepositoryImpl
 	cache          cache.NoteCache
+	local          cache.NoteLocalCache
 	logger         logger.Logger
 	group          singleflight.Group
 	coalesceMisses bool
 }
 
-func NewCachedNoteRepository(inner *NoteRepositoryImpl, noteCache cache.NoteCache, l logger.Logger) *CachedNoteRepository {
-	return newCachedNoteRepository(inner, noteCache, l, true)
+func NewCachedNoteRepository(inner *NoteRepositoryImpl, noteCache cache.NoteCache, local cache.NoteLocalCache, l logger.Logger) *CachedNoteRepository {
+	return newCachedNoteRepository(inner, noteCache, local, l, true)
 }
 
-func newCachedNoteRepository(inner *NoteRepositoryImpl, noteCache cache.NoteCache, l logger.Logger, coalesceMisses bool) *CachedNoteRepository {
+func newCachedNoteRepository(inner *NoteRepositoryImpl, noteCache cache.NoteCache, local cache.NoteLocalCache, l logger.Logger, coalesceMisses bool) *CachedNoteRepository {
 	return &CachedNoteRepository{
 		inner:          inner,
 		cache:          noteCache,
+		local:          local,
 		logger:         l,
 		coalesceMisses: coalesceMisses,
 	}
@@ -42,24 +44,16 @@ func (r *CachedNoteRepository) Create(ctx context.Context, note domain.Note) (do
 }
 
 func (r *CachedNoteRepository) FindByID(ctx context.Context, id int64) (domain.Note, error) {
-	note, err := r.cache.Get(ctx, id)
-	if err == nil {
-		return note, nil
-	}
-	if errors.Is(err, cache.ErrNoteNotFound) {
-		return domain.Note{}, ErrNoteNotFound
+	if note, err, handled := r.lookupCaches(ctx, id); handled {
+		return note, err
 	}
 	if !r.coalesceMisses {
 		return r.loadAndCache(ctx, id)
 	}
 	result := r.group.DoChan(strconv.FormatInt(id, 10), func() (any, error) {
 		// A previous leader may have populated Redis before this goroutine joined.
-		note, cacheErr := r.cache.Get(ctx, id)
-		if cacheErr == nil {
-			return note, nil
-		}
-		if errors.Is(cacheErr, cache.ErrNoteNotFound) {
-			return domain.Note{}, ErrNoteNotFound
+		if note, err, handled := r.lookupCaches(ctx, id); handled {
+			return note, err
 		}
 		return r.loadAndCache(ctx, id)
 	})
@@ -74,16 +68,42 @@ func (r *CachedNoteRepository) FindByID(ctx context.Context, id int64) (domain.N
 	}
 }
 
+func (r *CachedNoteRepository) lookupCaches(ctx context.Context, id int64) (domain.Note, error, bool) {
+	note, err := r.local.Get(id)
+	if err == nil {
+		return note, nil, true
+	}
+	if errors.Is(err, cache.ErrNoteNotFound) {
+		return domain.Note{}, ErrNoteNotFound, true
+	}
+
+	note, err = r.cache.Get(ctx, id)
+	if err == nil {
+		r.local.Set(note)
+		return note, nil, true
+	}
+	if errors.Is(err, cache.ErrNoteNotFound) {
+		r.local.SetNotFound(id)
+		return domain.Note{}, ErrNoteNotFound, true
+	}
+	if !errors.Is(err, cache.ErrNoteCacheMiss) {
+		r.logger.Warn("read note cache failed", logger.Error(err))
+	}
+	return domain.Note{}, nil, false
+}
+
 func (r *CachedNoteRepository) loadAndCache(ctx context.Context, id int64) (domain.Note, error) {
 	note, err := r.inner.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrNoteNotFound) || errors.Is(err, ErrNoteDeleted) {
+			r.local.SetNotFound(id)
 			if cacheErr := r.cache.SetNotFound(ctx, id); cacheErr != nil {
 				r.logger.Warn("write negative note cache failed", logger.Error(cacheErr))
 			}
 		}
 		return domain.Note{}, err
 	}
+	r.local.Set(note)
 	if cacheErr := r.cache.Set(ctx, note); cacheErr != nil {
 		r.logger.Warn("write note cache failed", logger.Error(cacheErr))
 	}
@@ -111,6 +131,7 @@ func (r *CachedNoteRepository) SoftDelete(ctx context.Context, id, authorID int6
 }
 
 func (r *CachedNoteRepository) invalidate(ctx context.Context, id int64) {
+	r.local.Delete(id)
 	if err := r.cache.Delete(ctx, id); err != nil {
 		r.logger.Warn("invalidate note cache failed", logger.Error(err))
 	}

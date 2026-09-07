@@ -19,7 +19,10 @@ const (
 	noteCacheJitterRatio = 10
 )
 
-var ErrNoteNotFound = errors.New("note cache stores not found")
+var (
+	ErrNoteCacheMiss = errors.New("note cache miss")
+	ErrNoteNotFound  = errors.New("note cache stores not found")
+)
 
 type NoteCache interface {
 	Get(ctx context.Context, id int64) (domain.Note, error)
@@ -43,6 +46,9 @@ func NewRedisNoteCache(cmd redis.Cmdable) *RedisNoteCache {
 func (c *RedisNoteCache) Get(ctx context.Context, id int64) (domain.Note, error) {
 	data, err := c.cmd.Get(ctx, c.key(id)).Bytes()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return domain.Note{}, ErrNoteCacheMiss
+		}
 		return domain.Note{}, err
 	}
 	var tombstone noteCacheTombstone
