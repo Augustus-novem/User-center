@@ -14,7 +14,7 @@ redis:
 kafka:
   enabled: true
   brokers:
-    - localhost:9092
+    - localhost:29092
   client_id: user-center-worker
   consumer_group: user-center-worker
 
