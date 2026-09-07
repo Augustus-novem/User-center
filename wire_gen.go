@@ -54,9 +54,6 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	checkInHandler := web.NewCheckInHandler(signInServiceImpl)
 	rankServiceImpl := service.NewRankServiceImpl(rankRepositoryImpl, cachedUserRepository)
 	rankHandler := web.NewRankHandler(rankServiceImpl)
-	client := ioc.InitRAGClient(cfg)
-	ragServiceImpl := service.NewRAGServiceImpl(client, cfg)
-	ragHandler := ioc.InitRAGHandler(ragServiceImpl)
-	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, ragHandler)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler)
 	return engine
 }

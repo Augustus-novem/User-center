@@ -23,8 +23,6 @@ func NewJWTLoginMiddlewareBuilder(hdl jwt2.Handler) *JWTLoginMiddlewareBuilder {
 	s.Add("/user/login")
 	s.Add("/oauth2/wechat/authurl")
 	s.Add("/oauth2/wechat/callback")
-	s.Add("/rag/ask")
-	s.Add("/rag/health")
 	return &JWTLoginMiddlewareBuilder{
 		publicPaths: s,
 		Handler:     hdl,
