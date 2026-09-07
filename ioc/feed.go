@@ -15,6 +15,7 @@ var FeedSet = wire.NewSet(
 	InitFeedInbox,
 	wire.Bind(new(repository.FeedInbox), new(*cache.RedisFeedInbox)),
 	InitFeedService,
+	wire.Bind(new(service.FeedService), new(*service.FeedServiceImpl)),
 )
 
 func InitFeedInbox(cmd redis.Cmdable, cfg *config.AppConfig) *cache.RedisFeedInbox {

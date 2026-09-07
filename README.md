@@ -9,6 +9,7 @@
 - 用户资料查询与修改。
 - 用户关注、取消关注，以及粉丝/关注列表的稳定 cursor 分页。关系保存在 MySQL，本阶段不加 Redis。
 - 多图笔记发布、详情、作者列表和软删除。发布与 `note.published` Outbox 写入同一 MySQL 事务。
+- 笔记详情使用 1 秒有界本地缓存、Redis 正/负缓存、TTL jitter 和进程内 singleflight；Redis 故障时回源 MySQL。
 - 笔记点赞/取消点赞、评论发布与时间序 cursor 分页。首次点赞和评论写入 Outbox。
 - 关注 Feed（Hybrid）：普通作者 `note.published` 扇出到 Redis Inbox；follower 数达到 `feed.fanout_threshold` 的作者改走 Pull。`GET /feed/following` 按 `note_id` 合并 Inbox 与大 V 近况。
 - 每日签到、月度签到记录、连续签到天数。
@@ -95,6 +96,7 @@ Sarama producer 使用 `WaitForAll`，Relay 按 at-least-once 语义工作。Con
 | `rank:active:monthly:{yyyyMM}` | ZSet | 月榜 |
 | `welcome:message:user:{user_id}` | String/JSON | 当前欢迎通知 |
 | `feed:inbox:{user_id}` | ZSet | Following Feed Inbox，member/score 均为 note_id |
+| `note:detail:{note_id}` | String/JSON | 笔记详情正缓存或 not-found tombstone |
 
 Redis 使用 DB 1。
 
@@ -173,7 +175,7 @@ Windows 上运行 race detector 需要启用 CGO 并安装 C 编译器；也可�
 - 没有已接入的 Kafka 延迟重试或 DLQ 消费链路。
 - 没有账号级登录限流；当前 HTTP 限流是配置驱动的全局 Redis 滑动窗口。
 - `RankConsistencyCache` 和补偿服务代码没有接入运行时依赖图。
-- 没有可声明的 QPS、P95/P99 或缓存命中率基准结果。
+- M07 仅有受控 DAO harness 的 singleflight ON/OFF 回源对照；没有可声明的生产 QPS、P95/P99 或缓存命中率。
 - Outbox Relay 当前没有多实例抢占保护与退避策略。
 
 后续增量开发规范见 [docs/community-dev](docs/community-dev/)；项目边界见 [PROJECT_BOUNDARY.md](docs/community-dev/PROJECT_BOUNDARY.md)。
