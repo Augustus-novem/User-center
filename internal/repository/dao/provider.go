@@ -17,4 +17,8 @@ var DAOSet = wire.NewSet(
 	wire.Bind(new(FollowDAO), new(*GORMFollowDAO)),
 	NewGORMNoteDAO,
 	wire.Bind(new(NoteDAO), new(*GORMNoteDAO)),
+	NewGORMLikeDAO,
+	wire.Bind(new(LikeDAO), new(*GORMLikeDAO)),
+	NewGORMCommentDAO,
+	wire.Bind(new(CommentDAO), new(*GORMCommentDAO)),
 )

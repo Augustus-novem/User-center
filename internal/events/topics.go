@@ -4,4 +4,6 @@ const (
 	TopicUserRegistered = "user.registered"
 	TopicUserActivity   = "user.activity"
 	TopicNotePublished  = "note.published"
+	TopicNoteLiked      = "note.liked"
+	TopicCommentCreated = "comment.created"
 )
