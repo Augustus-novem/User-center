@@ -14,6 +14,7 @@ type NoteDAO interface {
 	Insert(ctx context.Context, note NoteOfDB) (NoteOfDB, error)
 	InsertImages(ctx context.Context, images []NoteImageOfDB) error
 	FindByID(ctx context.Context, id int64) (NoteOfDB, error)
+	FindByIDs(ctx context.Context, ids []int64) ([]NoteOfDB, error)
 	ListImages(ctx context.Context, noteID int64) ([]NoteImageOfDB, error)
 	ListByAuthor(ctx context.Context, authorID int64, status string, cursor *NoteCursor, limit int) ([]NoteOfDB, error)
 	SoftDelete(ctx context.Context, id, authorID int64) error
@@ -99,6 +100,15 @@ func (d *GORMNoteDAO) ListByAuthor(ctx context.Context, authorID int64, status s
 	}
 	var rows []NoteOfDB
 	err := q.Order("created_at DESC, id DESC").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+func (d *GORMNoteDAO) FindByIDs(ctx context.Context, ids []int64) ([]NoteOfDB, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []NoteOfDB
+	err := dbFromCtx(ctx, d.db).Where("id IN ?", ids).Find(&rows).Error
 	return rows, err
 }
 

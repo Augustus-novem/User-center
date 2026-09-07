@@ -58,6 +58,24 @@ func TestGORMNoteDAO_SoftDeleteNoRow(t *testing.T) {
 	}
 }
 
+func TestGORMNoteDAO_FindByIDs(t *testing.T) {
+	t.Parallel()
+	db, mock, cleanup := newNoteMockDB(t)
+	defer cleanup()
+	rows := sqlmock.NewRows([]string{"id", "author_id", "title", "content", "status", "created_at", "updated_at"}).
+		AddRow(2, 8, "t", "c", "published", 1, 1).
+		AddRow(3, 8, "d", "c", "deleted", 1, 1)
+	mock.ExpectQuery("SELECT .* FROM .*notes.*").WillReturnRows(rows)
+
+	got, err := NewGORMNoteDAO(db).FindByIDs(context.Background(), []int64{2, 3, 4})
+	if err != nil {
+		t.Fatalf("FindByIDs: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want 2 rows including deleted, got %+v", got)
+	}
+}
+
 func newNoteMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, func()) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New()

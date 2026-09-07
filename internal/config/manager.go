@@ -135,6 +135,9 @@ func warnStaticChange(logger *zap.Logger, oldCfg, newCfg AppConfig) {
 	if !reflect.DeepEqual(oldCfg.RateLimit, newCfg.RateLimit) {
 		warnings = append(warnings, "ratelimit")
 	}
+	if !reflect.DeepEqual(oldCfg.Feed, newCfg.Feed) {
+		warnings = append(warnings, "feed")
+	}
 	if len(warnings) > 0 {
 		logger.Warn("检测到静态配置变更；当前进程不会热更新这些模块，需重启后生效", zap.Strings("keys", warnings))
 	}
@@ -181,6 +184,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("feature.enable_wechat_login", true)
 	v.SetDefault("feature.enable_sms_login", true)
 	v.SetDefault("feature.enable_debug_log", false)
+	v.SetDefault("feed.fanout_batch_size", 200)
+	v.SetDefault("feed.inbox_max_items", 500)
 }
 
 func bindEnvs(v *viper.Viper) {
@@ -248,6 +253,12 @@ func validate(cfg AppConfig) error {
 	}
 	if cfg.RateLimit.Enabled && cfg.RateLimit.Limit <= 0 {
 		return fmt.Errorf("ratelimit.limit 必须大于 0")
+	}
+	if cfg.Feed.FanoutBatchSize < 0 {
+		return fmt.Errorf("feed.fanout_batch_size 不能小于 0")
+	}
+	if cfg.Feed.InboxMaxItems < 0 {
+		return fmt.Errorf("feed.inbox_max_items 不能小于 0")
 	}
 	if cfg.JWT.AccessTokenTTL <= 0 {
 		return fmt.Errorf("jwt.access_token_ttl 必须大于 0")

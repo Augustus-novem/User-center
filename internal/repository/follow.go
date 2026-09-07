@@ -13,6 +13,7 @@ type FollowRepository interface {
 	Delete(ctx context.Context, followerID, followeeID int64) error
 	ListFollowing(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
 	ListFollowers(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
+	ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
 }
 
 type FollowRepositoryImpl struct {
@@ -48,6 +49,10 @@ func (r *FollowRepositoryImpl) ListFollowers(ctx context.Context, followeeID int
 		return nil, err
 	}
 	return toDomainRelations(rows), nil
+}
+
+func (r *FollowRepositoryImpl) ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error) {
+	return r.dao.ListFolloweeIDs(ctx, followerID, followeeIDs)
 }
 
 func toDAOFollowCursor(cursor *domain.FollowCursor) *dao.FollowCursor {

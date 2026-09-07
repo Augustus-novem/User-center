@@ -70,3 +70,7 @@ feature:
   enable_wechat_login: false
   enable_sms_login: true
   enable_debug_log: false
+
+feed:
+  fanout_batch_size: 200
+  inbox_max_items: 500

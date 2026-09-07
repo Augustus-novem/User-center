@@ -9,10 +9,11 @@ import (
 )
 
 type followDAOStub struct {
-	insertFn        func(ctx context.Context, rel dao.UserRelationOfDB) error
-	deleteFn        func(ctx context.Context, followerID, followeeID int64) error
-	listFollowingFn func(ctx context.Context, followerID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
-	listFollowersFn func(ctx context.Context, followeeID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
+	insertFn          func(ctx context.Context, rel dao.UserRelationOfDB) error
+	deleteFn          func(ctx context.Context, followerID, followeeID int64) error
+	listFollowingFn   func(ctx context.Context, followerID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
+	listFollowersFn   func(ctx context.Context, followeeID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
+	listFolloweeIDsFn func(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
 }
 
 func (s *followDAOStub) Insert(ctx context.Context, rel dao.UserRelationOfDB) error {
@@ -41,6 +42,13 @@ func (s *followDAOStub) ListFollowers(ctx context.Context, followeeID int64, cur
 		return nil, nil
 	}
 	return s.listFollowersFn(ctx, followeeID, cursor, limit)
+}
+
+func (s *followDAOStub) ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error) {
+	if s.listFolloweeIDsFn == nil {
+		return nil, nil
+	}
+	return s.listFolloweeIDsFn(ctx, followerID, followeeIDs)
 }
 
 func TestFollowRepositoryImpl_CreateMapsDuplicate(t *testing.T) {

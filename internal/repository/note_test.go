@@ -12,6 +12,7 @@ type noteDAOStub struct {
 	insertFn       func(ctx context.Context, note dao.NoteOfDB) (dao.NoteOfDB, error)
 	insertImagesFn func(ctx context.Context, images []dao.NoteImageOfDB) error
 	findByIDFn     func(ctx context.Context, id int64) (dao.NoteOfDB, error)
+	findByIDsFn    func(ctx context.Context, ids []int64) ([]dao.NoteOfDB, error)
 	listImagesFn   func(ctx context.Context, noteID int64) ([]dao.NoteImageOfDB, error)
 	listByAuthorFn func(ctx context.Context, authorID int64, status string, cursor *dao.NoteCursor, limit int) ([]dao.NoteOfDB, error)
 	softDeleteFn   func(ctx context.Context, id, authorID int64) error
@@ -37,6 +38,13 @@ func (s *noteDAOStub) FindByID(ctx context.Context, id int64) (dao.NoteOfDB, err
 		return dao.NoteOfDB{}, dao.ErrNoteNotFound
 	}
 	return s.findByIDFn(ctx, id)
+}
+
+func (s *noteDAOStub) FindByIDs(ctx context.Context, ids []int64) ([]dao.NoteOfDB, error) {
+	if s.findByIDsFn == nil {
+		return nil, nil
+	}
+	return s.findByIDsFn(ctx, ids)
 }
 
 func (s *noteDAOStub) ListImages(ctx context.Context, noteID int64) ([]dao.NoteImageOfDB, error) {

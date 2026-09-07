@@ -8,7 +8,9 @@ import (
 	"time"
 	"user-center/internal/events"
 	"user-center/internal/repository"
+	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
+	"user-center/internal/service"
 	"user-center/internal/worker"
 	"user-center/ioc"
 	"user-center/pkg/logger"
@@ -46,13 +48,20 @@ func main() {
 
 	pointRepo := repository.NewPointRepositoryImpl(dao.NewGORMPointDAO(db))
 	registeredDeduper := worker.NewRedisDeduplicator(rdb, "worker:user_registered")
+	notePublishedDeduper := worker.NewRedisDeduplicator(rdb, worker.NotePublishedDeduperNamespace)
 	activityProcessor := worker.NewRedisUserActivityProcessor(rdb)
+	followRepo := repository.NewFollowRepositoryImpl(dao.NewGORMFollowDAO(db))
+	noteRepo := repository.NewNoteRepositoryImpl(dao.NewGORMNoteDAO(db))
+	feedInbox := cache.NewRedisFeedInbox(rdb, cfg.Feed.InboxLimit())
+	feedSvc := service.NewFeedServiceImpl(feedInbox, noteRepo, followRepo, cfg.Feed.FanoutBatch(), appLogger)
 
 	registeredHandler := worker.NewUserRegisteredHandler(pointRepo, registeredDeduper, appLogger)
 	activityHandler := worker.NewUserActivityHandler(activityProcessor, appLogger)
+	notePublishedHandler := worker.NewNotePublishedHandler(feedSvc, notePublishedDeduper, appLogger)
 	consumerHandler := worker.NewConsumerGroupHandler(appLogger, map[string]worker.MessageHandler{
 		events.TopicUserRegistered: registeredHandler.Handle,
 		events.TopicUserActivity:   activityHandler.Handle,
+		events.TopicNotePublished:  notePublishedHandler.Handle,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -64,7 +73,11 @@ func main() {
 	)
 
 	for {
-		if err = group.Consume(ctx, []string{events.TopicUserRegistered, events.TopicUserActivity}, consumerHandler); err != nil {
+		if err = group.Consume(ctx, []string{
+			events.TopicUserRegistered,
+			events.TopicUserActivity,
+			events.TopicNotePublished,
+		}, consumerHandler); err != nil {
 			if ctx.Err() != nil {
 				return
 			}

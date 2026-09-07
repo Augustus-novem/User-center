@@ -85,3 +85,7 @@ feature:
   enable_wechat_login: false
   enable_sms_login: true
   enable_debug_log: true
+
+feed:
+  fanout_batch_size: 50
+  inbox_max_items: 100

@@ -68,9 +68,8 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	commentRepositoryImpl := repository.NewCommentRepositoryImpl(gormCommentDAO)
 	engagementServiceImpl := service.NewEngagementServiceImpl(noteRepositoryImpl, likeRepositoryImpl, commentRepositoryImpl, transaction, publisher, l)
 	engagementHandler := web.NewEngagementHandler(engagementServiceImpl)
-	gormFeedDAO := dao.NewGORMFeedDAO(db)
-	feedRepositoryImpl := repository.NewFeedRepositoryImpl(gormFeedDAO)
-	feedServiceImpl := service.NewFeedServiceImpl(feedRepositoryImpl)
+	redisFeedInbox := ioc.InitFeedInbox(cmdable, cfg)
+	feedServiceImpl := ioc.InitFeedService(redisFeedInbox, noteRepositoryImpl, followRepositoryImpl, cfg, l)
 	feedHandler := web.NewFeedHandler(feedServiceImpl)
 	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler, engagementHandler, feedHandler)
 	return engine

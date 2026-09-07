@@ -20,6 +20,7 @@ type AppConfig struct {
 	RateLimit RateLimitConfig `mapstructure:"ratelimit"`
 	Log       LogConfig       `mapstructure:"log"`
 	Feature   FeatureConfig   `mapstructure:"feature"`
+	Feed      FeedConfig      `mapstructure:"feed"`
 }
 
 func (conf AppConfig) Addr() string {
@@ -109,6 +110,25 @@ type FeatureConfig struct {
 	EnableWechatLogin bool `mapstructure:"enable_wechat_login"`
 	EnableSMSLogin    bool `mapstructure:"enable_sms_login"`
 	EnableDebugLog    bool `mapstructure:"enable_debug_log"`
+}
+
+type FeedConfig struct {
+	FanoutBatchSize int `mapstructure:"fanout_batch_size"`
+	InboxMaxItems   int `mapstructure:"inbox_max_items"`
+}
+
+func (c FeedConfig) FanoutBatch() int {
+	if c.FanoutBatchSize <= 0 {
+		return 200
+	}
+	return c.FanoutBatchSize
+}
+
+func (c FeedConfig) InboxLimit() int {
+	if c.InboxMaxItems <= 0 {
+		return 500
+	}
+	return c.InboxMaxItems
 }
 
 type DynamicConfig struct {

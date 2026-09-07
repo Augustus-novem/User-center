@@ -16,6 +16,7 @@ type FollowDAO interface {
 	Delete(ctx context.Context, followerID, followeeID int64) error
 	ListFollowing(ctx context.Context, followerID int64, cursor *FollowCursor, limit int) ([]UserRelationOfDB, error)
 	ListFollowers(ctx context.Context, followeeID int64, cursor *FollowCursor, limit int) ([]UserRelationOfDB, error)
+	ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
 }
 
 type FollowCursor struct {
@@ -69,6 +70,18 @@ func (d *GORMFollowDAO) ListFollowing(ctx context.Context, followerID int64, cur
 
 func (d *GORMFollowDAO) ListFollowers(ctx context.Context, followeeID int64, cursor *FollowCursor, limit int) ([]UserRelationOfDB, error) {
 	return d.listBy(ctx, "followee_id", followeeID, cursor, limit)
+}
+
+func (d *GORMFollowDAO) ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error) {
+	if len(followeeIDs) == 0 {
+		return nil, nil
+	}
+	var ids []int64
+	err := dbFromCtx(ctx, d.db).
+		Model(&UserRelationOfDB{}).
+		Where("follower_id = ? AND followee_id IN ?", followerID, followeeIDs).
+		Pluck("followee_id", &ids).Error
+	return ids, err
 }
 
 func (d *GORMFollowDAO) listBy(ctx context.Context, column string, userID int64, cursor *FollowCursor, limit int) ([]UserRelationOfDB, error) {

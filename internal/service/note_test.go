@@ -33,6 +33,18 @@ func (s *noteRepoStub) FindByID(ctx context.Context, id int64) (domain.Note, err
 	return s.findByIDFn(ctx, id)
 }
 
+func (s *noteRepoStub) FindByIDs(ctx context.Context, ids []int64) (map[int64]domain.Note, error) {
+	res := make(map[int64]domain.Note, len(ids))
+	for _, id := range ids {
+		note, err := s.FindByID(ctx, id)
+		if err != nil {
+			continue
+		}
+		res[id] = note
+	}
+	return res, nil
+}
+
 func (s *noteRepoStub) ListByAuthor(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error) {
 	if s.listByAuthorFn == nil {
 		return nil, nil
@@ -192,6 +204,18 @@ func (s *memNoteStore) FindByID(ctx context.Context, id int64) (domain.Note, err
 		return domain.Note{}, repository.ErrNoteNotFound
 	}
 	return note, nil
+}
+
+func (s *memNoteStore) FindByIDs(ctx context.Context, ids []int64) (map[int64]domain.Note, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	res := make(map[int64]domain.Note, len(ids))
+	for _, id := range ids {
+		if note, ok := s.notes[id]; ok {
+			res[id] = note
+		}
+	}
+	return res, nil
 }
 
 func (s *memNoteStore) ListByAuthor(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error) {

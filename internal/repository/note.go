@@ -15,6 +15,7 @@ var (
 type NoteRepository interface {
 	Create(ctx context.Context, note domain.Note) (domain.Note, error)
 	FindByID(ctx context.Context, id int64) (domain.Note, error)
+	FindByIDs(ctx context.Context, ids []int64) (map[int64]domain.Note, error)
 	ListByAuthor(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error)
 	SoftDelete(ctx context.Context, id, authorID int64) error
 }
@@ -66,6 +67,18 @@ func (r *NoteRepositoryImpl) FindByID(ctx context.Context, id int64) (domain.Not
 		return domain.Note{}, ErrNoteDeleted
 	}
 	return note, nil
+}
+
+func (r *NoteRepositoryImpl) FindByIDs(ctx context.Context, ids []int64) (map[int64]domain.Note, error) {
+	rows, err := r.dao.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[int64]domain.Note, len(rows))
+	for _, row := range rows {
+		res[row.Id] = toDomainNote(row, nil)
+	}
+	return res, nil
 }
 
 func (r *NoteRepositoryImpl) ListByAuthor(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error) {

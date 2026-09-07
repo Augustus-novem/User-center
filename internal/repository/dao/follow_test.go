@@ -101,6 +101,22 @@ func TestGORMFollowDAO_ListFollowing_usesStableCursor(t *testing.T) {
 	}
 }
 
+func TestGORMFollowDAO_ListFolloweeIDs(t *testing.T) {
+	t.Parallel()
+	db, mock, cleanup := newFollowMockDB(t)
+	defer cleanup()
+	rows := sqlmock.NewRows([]string{"followee_id"}).AddRow(8).AddRow(9)
+	mock.ExpectQuery("SELECT .*followee_id.* FROM .*user_relations.*").WillReturnRows(rows)
+
+	got, err := NewGORMFollowDAO(db).ListFolloweeIDs(context.Background(), 1, []int64{8, 9, 10})
+	if err != nil {
+		t.Fatalf("ListFolloweeIDs: %v", err)
+	}
+	if len(got) != 2 || got[0] != 8 || got[1] != 9 {
+		t.Fatalf("unexpected ids: %v", got)
+	}
+}
+
 func newFollowMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, func()) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New()

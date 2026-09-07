@@ -11,10 +11,11 @@ import (
 )
 
 type followRepoStub struct {
-	createFn        func(ctx context.Context, followerID, followeeID int64) error
-	deleteFn        func(ctx context.Context, followerID, followeeID int64) error
-	listFollowingFn func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
-	listFollowersFn func(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
+	createFn          func(ctx context.Context, followerID, followeeID int64) error
+	deleteFn          func(ctx context.Context, followerID, followeeID int64) error
+	listFollowingFn   func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
+	listFollowersFn   func(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
+	listFolloweeIDsFn func(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
 }
 
 func (s *followRepoStub) Create(ctx context.Context, followerID, followeeID int64) error {
@@ -43,6 +44,13 @@ func (s *followRepoStub) ListFollowers(ctx context.Context, followeeID int64, cu
 		return nil, nil
 	}
 	return s.listFollowersFn(ctx, followeeID, cursor, limit)
+}
+
+func (s *followRepoStub) ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error) {
+	if s.listFolloweeIDsFn == nil {
+		return followeeIDs, nil
+	}
+	return s.listFolloweeIDsFn(ctx, followerID, followeeIDs)
 }
 
 func newFollowService(followRepo repository.FollowRepository, users repository.UserRepository) *FollowServiceImpl {
@@ -281,6 +289,18 @@ func (r *memFollowRepo) ListFollowing(ctx context.Context, followerID int64, cur
 
 func (r *memFollowRepo) ListFollowers(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
 	return nil, nil
+}
+
+func (r *memFollowRepo) ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]int64, 0, len(followeeIDs))
+	for _, id := range followeeIDs {
+		if _, ok := r.byPair[[2]int64{followerID, id}]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 func (r *memFollowRepo) len() int {

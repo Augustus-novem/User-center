@@ -26,6 +26,7 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 		cache.CacheSet,
 		repository.RepoSet,
 		service.ServiceSet,
+		ioc.FeedSet,
 
 		ioc.InitJWTHandler,
 		web.NewUserHandler,
