@@ -74,6 +74,10 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	redisFeedInbox := ioc.InitFeedInbox(cmdable, cfg)
 	feedServiceImpl := ioc.InitFeedService(redisFeedInbox, cachedNoteRepository, followRepositoryImpl, cfg, l)
 	feedHandler := web.NewFeedHandler(feedServiceImpl)
-	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler, engagementHandler, feedHandler)
+	redisHotRankCache := ioc.InitHotRankCache(cmdable, cfg)
+	hotRankRepositoryImpl := repository.NewHotRankRepositoryImpl(redisHotRankCache)
+	hotRankServiceImpl := ioc.InitHotRankService(hotRankRepositoryImpl, cfg)
+	hotRankHandler := web.NewHotRankHandler(hotRankServiceImpl)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler, engagementHandler, feedHandler, hotRankHandler)
 	return engine
 }

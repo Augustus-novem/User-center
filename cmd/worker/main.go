@@ -60,7 +60,11 @@ func main() {
 		cfg.HotRank.EventDedupTTL,
 	)
 	hotRepo := repository.NewHotRankRepositoryImpl(hotCache)
-	hotSvc := service.NewHotRankServiceImpl(hotRepo, cfg.HotRank)
+	hotSvc := service.NewHotRankServiceImpl(hotRepo, service.HotRankWeights{
+		Publish: cfg.HotRank.PublishWeight,
+		Like:    cfg.HotRank.LikeWeight,
+		Comment: cfg.HotRank.CommentWeight,
+	})
 
 	registeredHandler := worker.NewUserRegisteredHandler(pointRepo, registeredDeduper, appLogger)
 	activityHandler := worker.NewUserActivityHandler(activityProcessor, appLogger)
