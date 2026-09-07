@@ -20,8 +20,8 @@ kafka:
 
 
 jwt:
-  access_token_key: test-access-token-key-please-change
-  refresh_token_key: test-refresh-token-key-please-change
+  access_token_key: TEST-ONLY-NOT-A-SECRET-ACCESS-TOKEN-KEY
+  refresh_token_key: TEST-ONLY-NOT-A-SECRET-REFRESH-TOKEN-KEY
   access_token_ttl: 15m
   refresh_token_ttl: 24h
   idle_timeout: 24h
@@ -29,10 +29,10 @@ jwt:
 
 wechat:
   app_id: test-app-id
-  app_key: test-app-key
+  app_key: TEST-ONLY-NOT-A-SECRET-WECHAT-APP-KEY
   redirect_url: http://localhost:8082/oauth2/wechat/callback
   state_cookie_name: jwt-state
-  state_token_key: test-wechat-state-token-key
+  state_token_key: TEST-ONLY-NOT-A-SECRET-WECHAT-STATE-KEY
   state_token_ttl: 10m
   state_cookie_path: /oauth2/wechat/callback
 

@@ -19,8 +19,8 @@ kafka:
   consumer_group: user-center-notification-service
 
 jwt:
-  access_token_key: 48lJdJICc98rxdTD47otl9y3w78PGePJn9QW0vlgCXD
-  refresh_token_key: PYB340i9IPNMJYVxT4ZPTWxa882JTGScFvhG4IGib6h
+  access_token_key: DEV-ONLY-NOT-A-SECRET-ACCESS-TOKEN-KEY
+  refresh_token_key: DEV-ONLY-NOT-A-SECRET-REFRESH-TOKEN-KEY
   access_token_ttl: 15m
   refresh_token_ttl: 168h
   idle_timeout: 168h
@@ -31,7 +31,7 @@ wechat:
   app_key: ""
   redirect_url: http://localhost:8081/oauth2/wechat/callback
   state_cookie_name: jwt-state
-  state_token_key: REnqEpucqg3KNDgWrLkyaKiZYnD6R1b9v8PpTSIxlox
+  state_token_key: DEV-ONLY-NOT-A-SECRET-WECHAT-STATE-KEY
   state_token_ttl: 10m
   state_cookie_path: /oauth2/wechat/callback
 

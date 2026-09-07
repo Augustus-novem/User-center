@@ -24,7 +24,7 @@ qdrant:
 llm:
   enabled: false
   base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-  api_key: "sk-c1ad42743e1d4e8aaa530f3232383d5a"
+  api_key: ""
   model: "qwen-max"
   timeout: 30
   temperature: 0.2
