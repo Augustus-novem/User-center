@@ -128,6 +128,12 @@ wechat:
 	if cfg.Wechat.StateTokenTTL != 10*time.Minute {
 		t.Fatalf("unexpected default state token ttl: %v", cfg.Wechat.StateTokenTTL)
 	}
+	if cfg.HotRank.WindowMinutes != 60 || cfg.HotRank.SnapshotTTL != 10*time.Minute || cfg.HotRank.EventDedupTTL != 7*24*time.Hour {
+		t.Fatalf("unexpected hot rank defaults: %+v", cfg.HotRank)
+	}
+	if cfg.HotRank.PublishWeight != 10 || cfg.HotRank.LikeWeight != 3 || cfg.HotRank.CommentWeight != 5 {
+		t.Fatalf("unexpected hot rank weights: %+v", cfg.HotRank)
+	}
 }
 
 func TestValidate(t *testing.T) {
@@ -154,6 +160,14 @@ func TestValidate(t *testing.T) {
 		},
 		RateLimit: RateLimitConfig{Enabled: true, Limit: 100},
 		Feature:   FeatureConfig{EnableWechatLogin: true},
+		HotRank: HotRankConfig{
+			WindowMinutes: 60,
+			SnapshotTTL:   10 * time.Minute,
+			EventDedupTTL: 7 * 24 * time.Hour,
+			PublishWeight: 10,
+			LikeWeight:    3,
+			CommentWeight: 5,
+		},
 	}
 
 	tests := []struct {
@@ -181,6 +195,13 @@ func TestValidate(t *testing.T) {
 				cfg.Wechat.StateTokenKey = ""
 			},
 			wantErr: "feature.enable_wechat_login=true 时，wechat.state_token_key 不能为空",
+		},
+		{
+			name: "invalid hot rank window",
+			mutate: func(cfg *AppConfig) {
+				cfg.HotRank.WindowMinutes = 0
+			},
+			wantErr: "hot_rank.window_minutes 必须大于 0",
 		},
 	}
 

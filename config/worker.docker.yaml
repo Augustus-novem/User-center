@@ -75,3 +75,11 @@ feed:
   fanout_batch_size: 200
   inbox_max_items: 500
   fanout_threshold: 1000
+
+hot_rank:
+  window_minutes: 60
+  snapshot_ttl: 10m
+  event_dedup_ttl: 168h
+  publish_weight: 10
+  like_weight: 3
+  comment_weight: 5

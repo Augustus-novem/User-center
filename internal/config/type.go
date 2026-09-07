@@ -21,6 +21,7 @@ type AppConfig struct {
 	Log       LogConfig       `mapstructure:"log"`
 	Feature   FeatureConfig   `mapstructure:"feature"`
 	Feed      FeedConfig      `mapstructure:"feed"`
+	HotRank   HotRankConfig   `mapstructure:"hot_rank"`
 }
 
 func (conf AppConfig) Addr() string {
@@ -116,6 +117,15 @@ type FeedConfig struct {
 	FanoutBatchSize int `mapstructure:"fanout_batch_size"`
 	InboxMaxItems   int `mapstructure:"inbox_max_items"`
 	FanoutThreshold int `mapstructure:"fanout_threshold"`
+}
+
+type HotRankConfig struct {
+	WindowMinutes int           `mapstructure:"window_minutes"`
+	SnapshotTTL   time.Duration `mapstructure:"snapshot_ttl"`
+	EventDedupTTL time.Duration `mapstructure:"event_dedup_ttl"`
+	PublishWeight int64         `mapstructure:"publish_weight"`
+	LikeWeight    int64         `mapstructure:"like_weight"`
+	CommentWeight int64         `mapstructure:"comment_weight"`
 }
 
 func (c FeedConfig) FanoutBatch() int {

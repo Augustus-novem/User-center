@@ -138,6 +138,9 @@ func warnStaticChange(logger *zap.Logger, oldCfg, newCfg AppConfig) {
 	if !reflect.DeepEqual(oldCfg.Feed, newCfg.Feed) {
 		warnings = append(warnings, "feed")
 	}
+	if !reflect.DeepEqual(oldCfg.HotRank, newCfg.HotRank) {
+		warnings = append(warnings, "hot_rank")
+	}
 	if len(warnings) > 0 {
 		logger.Warn("检测到静态配置变更；当前进程不会热更新这些模块，需重启后生效", zap.Strings("keys", warnings))
 	}
@@ -187,6 +190,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("feed.fanout_batch_size", 200)
 	v.SetDefault("feed.inbox_max_items", 500)
 	v.SetDefault("feed.fanout_threshold", 1000)
+	v.SetDefault("hot_rank.window_minutes", 60)
+	v.SetDefault("hot_rank.snapshot_ttl", "10m")
+	v.SetDefault("hot_rank.event_dedup_ttl", "168h")
+	v.SetDefault("hot_rank.publish_weight", 10)
+	v.SetDefault("hot_rank.like_weight", 3)
+	v.SetDefault("hot_rank.comment_weight", 5)
 }
 
 func bindEnvs(v *viper.Viper) {
@@ -263,6 +272,18 @@ func validate(cfg AppConfig) error {
 	}
 	if cfg.Feed.FanoutThreshold < 0 {
 		return fmt.Errorf("feed.fanout_threshold 不能小于 0")
+	}
+	if cfg.HotRank.WindowMinutes <= 0 {
+		return fmt.Errorf("hot_rank.window_minutes 必须大于 0")
+	}
+	if cfg.HotRank.SnapshotTTL <= 0 {
+		return fmt.Errorf("hot_rank.snapshot_ttl 必须大于 0")
+	}
+	if cfg.HotRank.EventDedupTTL <= 0 {
+		return fmt.Errorf("hot_rank.event_dedup_ttl 必须大于 0")
+	}
+	if cfg.HotRank.PublishWeight <= 0 || cfg.HotRank.LikeWeight <= 0 || cfg.HotRank.CommentWeight <= 0 {
+		return fmt.Errorf("hot_rank event weights 必须大于 0")
 	}
 	if cfg.JWT.AccessTokenTTL <= 0 {
 		return fmt.Errorf("jwt.access_token_ttl 必须大于 0")
