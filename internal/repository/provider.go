@@ -23,4 +23,6 @@ var RepoSet = wire.NewSet(
 	wire.Bind(new(EventOutboxRepository), new(*EventOutboxRepositoryImpl)),
 	NewFollowRepositoryImpl,
 	wire.Bind(new(FollowRepository), new(*FollowRepositoryImpl)),
+	NewNoteRepositoryImpl,
+	wire.Bind(new(NoteRepository), new(*NoteRepositoryImpl)),
 )

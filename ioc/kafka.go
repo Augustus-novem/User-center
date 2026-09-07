@@ -64,8 +64,10 @@ func EnsureKafkaTopics(cfg *config.AppConfig, l logger.Logger) error {
 	need := []string{
 		events.TopicUserRegistered,
 		events.TopicUserActivity,
-		events.TopicUserRegistered + ".dlq", // 死信队列
-		events.TopicUserActivity + ".dlq",   // 死信队列
+		events.TopicNotePublished,
+		events.TopicUserRegistered + ".dlq",
+		events.TopicUserActivity + ".dlq",
+		events.TopicNotePublished + ".dlq",
 	}
 	sort.Strings(need)
 	for _, topic := range need {
