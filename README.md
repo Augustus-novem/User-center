@@ -10,6 +10,7 @@
 - 用户关注、取消关注，以及粉丝/关注列表的稳定 cursor 分页。关系保存在 MySQL，本阶段不加 Redis。
 - 多图笔记发布、详情、作者列表和软删除。发布与 `note.published` Outbox 写入同一 MySQL 事务。
 - 笔记点赞/取消点赞、评论发布与时间序 cursor 分页。首次点赞和评论写入 Outbox。
+- 关注 Feed（Pull）：按关注关系 JOIN 已发布笔记，使用 `created_at + id` 稳定 cursor。
 - 每日签到、月度签到记录、连续签到天数。
 - 日榜、月榜及个人排名查询。
 - MySQL Outbox、Kafka Relay、两个 Consumer Group。
