@@ -15,4 +15,6 @@ var ServiceSet = wire.NewSet(
 	wire.Bind(new(FollowService), new(*FollowServiceImpl)),
 	NewNoteServiceImpl,
 	wire.Bind(new(NoteService), new(*NoteServiceImpl)),
+	NewEngagementServiceImpl,
+	wire.Bind(new(EngagementService), new(*EngagementServiceImpl)),
 )
