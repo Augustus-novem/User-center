@@ -54,14 +54,24 @@ func main() {
 	noteRepo := repository.NewNoteRepositoryImpl(dao.NewGORMNoteDAO(db))
 	feedInbox := cache.NewRedisFeedInbox(rdb, cfg.Feed.InboxLimit())
 	feedSvc := service.NewFeedServiceImpl(feedInbox, noteRepo, followRepo, cfg.Feed.FanoutBatch(), cfg.Feed.CelebrityThreshold(), appLogger)
+	hotCache := cache.NewRedisHotRankCache(rdb,
+		time.Duration(cfg.HotRank.WindowMinutes)*time.Minute,
+		cfg.HotRank.SnapshotTTL,
+		cfg.HotRank.EventDedupTTL,
+	)
+	hotRepo := repository.NewHotRankRepositoryImpl(hotCache)
+	hotSvc := service.NewHotRankServiceImpl(hotRepo, cfg.HotRank)
 
 	registeredHandler := worker.NewUserRegisteredHandler(pointRepo, registeredDeduper, appLogger)
 	activityHandler := worker.NewUserActivityHandler(activityProcessor, appLogger)
 	notePublishedHandler := worker.NewNotePublishedHandler(feedSvc, notePublishedDeduper, appLogger)
+	hotRankHandler := worker.NewHotRankHandler(hotSvc, appLogger)
 	consumerHandler := worker.NewConsumerGroupHandler(appLogger, map[string]worker.MessageHandler{
 		events.TopicUserRegistered: registeredHandler.Handle,
 		events.TopicUserActivity:   activityHandler.Handle,
-		events.TopicNotePublished:  notePublishedHandler.Handle,
+		events.TopicNotePublished:  worker.ChainHandlers(notePublishedHandler.Handle, hotRankHandler.Handle),
+		events.TopicNoteLiked:      hotRankHandler.Handle,
+		events.TopicCommentCreated: hotRankHandler.Handle,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -77,6 +87,8 @@ func main() {
 			events.TopicUserRegistered,
 			events.TopicUserActivity,
 			events.TopicNotePublished,
+			events.TopicNoteLiked,
+			events.TopicCommentCreated,
 		}, consumerHandler); err != nil {
 			if ctx.Err() != nil {
 				return
