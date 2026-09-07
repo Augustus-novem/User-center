@@ -10,7 +10,7 @@
 - 用户关注、取消关注，以及粉丝/关注列表的稳定 cursor 分页。关系保存在 MySQL，本阶段不加 Redis。
 - 多图笔记发布、详情、作者列表和软删除。发布与 `note.published` Outbox 写入同一 MySQL 事务。
 - 笔记点赞/取消点赞、评论发布与时间序 cursor 分页。首次点赞和评论写入 Outbox。
-- 关注 Feed（Pull）：按关注关系 JOIN 已发布笔记，使用 `created_at + id` 稳定 cursor。
+- 关注 Feed（Push Inbox）：`GET /feed/following` 读取 Redis `feed:inbox:{user_id}` candidate，再用 MySQL 过滤已删除、未发布和已取关内容。`note.published` 由 worker 按粉丝 cursor 分批扇出。
 - 每日签到、月度签到记录、连续签到天数。
 - 日榜、月榜及个人排名查询。
 - MySQL Outbox、Kafka Relay、两个 Consumer Group。
@@ -38,7 +38,7 @@ flowchart LR
 
 - `user-center` 处理 HTTP 请求与核心数据库事务，并在同一事务中写入 Outbox。
 - Relay 轮询待发布记录，发送成功后把记录标记为 `published`。
-- `worker` 消费注册和用户行为事件。
+- `worker` 消费注册、用户行为和 `note.published` 扇出事件。
 - `notification-service` 消费注册事件；当前“通知”是 Redis 中的欢迎消息，不是邮件或短信发送。
 
 ## 核心业务链路
@@ -75,6 +75,7 @@ POST /checkin
 | `user.registered` | user-center Outbox Relay | `user-center-worker` | 欢迎积分 |
 | `user.registered` | user-center Outbox Relay | `user-center-notification-service` | Redis 欢迎消息 |
 | `user.activity` | user-center Outbox Relay | `user-center-worker` | 行为日志与签到排行 |
+| `note.published` | user-center Outbox Relay | `user-center-worker` | 扇出到粉丝 Redis Inbox |
 
 Sarama producer 使用 `WaitForAll`，Relay 按 at-least-once 语义工作。Consumer handler 成功返回后才提交消息；消费者必须按可能重复投递设计。
 
@@ -93,6 +94,7 @@ Sarama producer 使用 `WaitForAll`，Relay 按 at-least-once 语义工作。Con
 | `rank:active:daily:{yyyyMMdd}` | ZSet | 日榜 |
 | `rank:active:monthly:{yyyyMM}` | ZSet | 月榜 |
 | `welcome:message:user:{user_id}` | String/JSON | 当前欢迎通知 |
+| `feed:inbox:{user_id}` | ZSet | Following Feed Inbox，member/score 均为 note_id |
 
 Redis 使用 DB 1。
 
