@@ -32,6 +32,7 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 		web.NewCheckInHandler,
 		web.NewRankHandler,
 		web.NewFollowHandler,
+		web.NewNoteHandler,
 		ioc.GinMiddlewares,
 		ioc.InitWebServer,
 		ioc.InitOAuth2WechatHandler,

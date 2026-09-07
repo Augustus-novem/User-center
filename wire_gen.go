@@ -58,6 +58,10 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	followRepositoryImpl := repository.NewFollowRepositoryImpl(gormFollowDAO)
 	followServiceImpl := service.NewFollowServiceImpl(followRepositoryImpl, cachedUserRepository, l)
 	followHandler := web.NewFollowHandler(followServiceImpl)
-	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler)
+	gormNoteDAO := dao.NewGORMNoteDAO(db)
+	noteRepositoryImpl := repository.NewNoteRepositoryImpl(gormNoteDAO)
+	noteServiceImpl := service.NewNoteServiceImpl(noteRepositoryImpl, transaction, publisher, l)
+	noteHandler := web.NewNoteHandler(noteServiceImpl)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler)
 	return engine
 }
