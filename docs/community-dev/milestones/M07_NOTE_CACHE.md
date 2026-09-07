@@ -75,6 +75,14 @@ local cache 在容量满时淘汰最早到期条目；读取返回图片切片�
 
 对照原始结果见 `docs/community-dev/benchmarks/2026-09-08-m07-singleflight.md`。
 
-## 已知技术债
+## DoD 结果
 
-- 当前 Windows 环境 `CGO_ENABLED=0` 且无 C 编译器，不能在本机执行 `go test -race ./...`；普通 build/test/vet 不受影响。
+- `go build ./...`：PASS。
+- `go test ./...`：PASS。
+- `go vet ./...`：PASS。
+- `git diff --check`：PASS。
+- 真实 Redis E2E：PASS。
+- singleflight 并发回源对照：PASS。
+- `go test -race ./...`：`SKIPPED - local Windows environment has no supported C compiler.`
+
+Race skip 是经用户批准的本地环境限制，不是代码失败。不得为了 milestone 自动安装系统级开发工具。
