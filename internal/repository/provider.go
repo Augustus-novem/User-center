@@ -29,4 +29,6 @@ var RepoSet = wire.NewSet(
 	wire.Bind(new(LikeRepository), new(*LikeRepositoryImpl)),
 	NewCommentRepositoryImpl,
 	wire.Bind(new(CommentRepository), new(*CommentRepositoryImpl)),
+	NewFeedRepositoryImpl,
+	wire.Bind(new(FeedRepository), new(*FeedRepositoryImpl)),
 )
