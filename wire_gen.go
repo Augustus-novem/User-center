@@ -54,6 +54,10 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	checkInHandler := web.NewCheckInHandler(signInServiceImpl)
 	rankServiceImpl := service.NewRankServiceImpl(rankRepositoryImpl, cachedUserRepository)
 	rankHandler := web.NewRankHandler(rankServiceImpl)
-	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler)
+	gormFollowDAO := dao.NewGORMFollowDAO(db)
+	followRepositoryImpl := repository.NewFollowRepositoryImpl(gormFollowDAO)
+	followServiceImpl := service.NewFollowServiceImpl(followRepositoryImpl, cachedUserRepository, l)
+	followHandler := web.NewFollowHandler(followServiceImpl)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler)
 	return engine
 }
