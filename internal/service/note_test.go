@@ -183,20 +183,89 @@ func TestNoteService_Delete(t *testing.T) {
 	t.Run("author can delete", func(t *testing.T) {
 		t.Parallel()
 		deleted := false
+		inTx := false
+		publisher := &publisherSpy{enabled: true}
 		svc := NewNoteServiceImpl(&noteRepoStub{
 			findByIDFn: func(ctx context.Context, id int64) (domain.Note, error) {
 				return domain.Note{ID: id, AuthorID: 7, Status: domain.NoteStatusPublished}, nil
 			},
 			softDeleteFn: func(ctx context.Context, id, authorID int64) error {
+				if !inTx {
+					t.Fatal("SoftDelete must run inside transaction")
+				}
 				deleted = true
 				return nil
 			},
-		}, &txStub{}, events.NopPublisher{}, logger.NewNoOpLogger())
+		}, &txStub{inTxFn: func(ctx context.Context, fn func(context.Context) error) error {
+			inTx = true
+			defer func() { inTx = false }()
+			return fn(ctx)
+		}}, publisher, logger.NewNoOpLogger())
 		if err := svc.Delete(context.Background(), 7, 3); err != nil {
 			t.Fatalf("delete: %v", err)
 		}
 		if !deleted {
 			t.Fatal("expected soft delete")
+		}
+		if len(publisher.calls) != 1 || publisher.calls[0].topic != events.TopicNoteDeleted {
+			t.Fatalf("unexpected publish calls: %+v", publisher.calls)
+		}
+		evt, ok := publisher.calls[0].value.(events.NoteDeletedEvent)
+		if !ok || evt.NoteID != 3 || evt.AuthorID != 7 || evt.EventID == "" {
+			t.Fatalf("unexpected event: %+v", publisher.calls[0].value)
+		}
+	})
+
+	t.Run("outbox failure rolls back and preserves cache", func(t *testing.T) {
+		t.Parallel()
+		invalidated := false
+		repo := &invalidatingNoteRepoStub{
+			noteRepoStub: &noteRepoStub{
+				findByIDFn: func(ctx context.Context, id int64) (domain.Note, error) {
+					return domain.Note{ID: id, AuthorID: 7, Status: domain.NoteStatusPublished}, nil
+				},
+			},
+			invalidateFn: func(ctx context.Context, id int64) { invalidated = true },
+		}
+		publisher := &publisherSpy{enabled: true, fn: func(ctx context.Context, topic, key string, value any) error {
+			return errors.New("outbox down")
+		}}
+		svc := NewNoteServiceImpl(repo, &txStub{}, publisher, logger.NewNoOpLogger())
+		if err := svc.Delete(context.Background(), 7, 3); err == nil {
+			t.Fatal("expected outbox failure")
+		}
+		if invalidated {
+			t.Fatal("cache must not be invalidated after transaction failure")
+		}
+	})
+
+	t.Run("invalidates cache after commit", func(t *testing.T) {
+		t.Parallel()
+		insideTx := false
+		invalidated := false
+		repo := &invalidatingNoteRepoStub{
+			noteRepoStub: &noteRepoStub{findByIDFn: func(ctx context.Context, id int64) (domain.Note, error) {
+				return domain.Note{ID: id, AuthorID: 7, Status: domain.NoteStatusPublished}, nil
+			}},
+			invalidateFn: func(ctx context.Context, id int64) {
+				if insideTx {
+					t.Fatal("cache invalidation must run after transaction commit")
+				}
+				invalidated = true
+			},
+		}
+		tx := &txStub{inTxFn: func(ctx context.Context, fn func(context.Context) error) error {
+			insideTx = true
+			err := fn(ctx)
+			insideTx = false
+			return err
+		}}
+		svc := NewNoteServiceImpl(repo, tx, events.NopPublisher{}, logger.NewNoOpLogger())
+		if err := svc.Delete(context.Background(), 7, 3); err != nil {
+			t.Fatalf("delete: %v", err)
+		}
+		if !invalidated {
+			t.Fatal("expected post-commit invalidation")
 		}
 	})
 

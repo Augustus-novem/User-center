@@ -107,11 +107,20 @@ func (s *NoteServiceImpl) Delete(ctx context.Context, operatorID, noteID int64) 
 	if note.AuthorID != operatorID {
 		return ErrNoteForbidden
 	}
-	if err = s.notes.SoftDelete(ctx, noteID, operatorID); err != nil {
+	err = s.tx.InTx(ctx, func(txCtx context.Context) error {
+		if txErr := s.notes.SoftDelete(txCtx, noteID, operatorID); txErr != nil {
+			return txErr
+		}
+		return s.publishNoteDeleted(txCtx, noteID, operatorID)
+	})
+	if err != nil {
 		if errors.Is(err, repository.ErrNoteNotFound) {
 			return ErrNoteNotFound
 		}
 		return err
+	}
+	if invalidator, ok := s.notes.(repository.NoteCacheInvalidator); ok {
+		invalidator.Invalidate(ctx, noteID)
 	}
 	return nil
 }
@@ -147,6 +156,14 @@ func (s *NoteServiceImpl) publishNotePublished(ctx context.Context, note domain.
 	}
 	evt := events.NewNotePublishedEvent(note.ID, note.AuthorID)
 	return s.publisher.Publish(ctx, events.TopicNotePublished, events.UserIDKey(note.AuthorID), evt)
+}
+
+func (s *NoteServiceImpl) publishNoteDeleted(ctx context.Context, noteID, authorID int64) error {
+	if s.publisher == nil || !s.publisher.IsEnabled() {
+		return nil
+	}
+	evt := events.NewNoteDeletedEvent(noteID, authorID)
+	return s.publisher.Publish(ctx, events.TopicNoteDeleted, events.UserIDKey(authorID), evt)
 }
 
 func buildPublishNote(authorID int64, title, content string, imageURLs []string) (domain.Note, error) {

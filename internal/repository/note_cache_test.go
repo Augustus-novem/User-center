@@ -229,7 +229,7 @@ func TestCachedNoteRepository_RedisFailureFallsBackToOrigin(t *testing.T) {
 	}
 }
 
-func TestCachedNoteRepository_DeleteInvalidatesLocalCache(t *testing.T) {
+func TestCachedNoteRepository_DeleteDoesNotInvalidateBeforeCommit(t *testing.T) {
 	t.Parallel()
 	local := cache.NewMemoryNoteLocalCache()
 	local.Set(domain.Note{ID: 31})
@@ -242,8 +242,8 @@ func TestCachedNoteRepository_DeleteInvalidatesLocalCache(t *testing.T) {
 	if err := repo.SoftDelete(context.Background(), 31, 2); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := local.Get(31); !errors.Is(err, cache.ErrNoteCacheMiss) {
-		t.Fatalf("want local miss after delete, got %v", err)
+	if _, err := local.Get(31); err != nil {
+		t.Fatalf("cache must remain until service transaction commits, got %v", err)
 	}
 }
 
@@ -273,7 +273,7 @@ func TestCachedNoteRepository_DeleteAndExplicitInvalidate(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 	repo.Invalidate(context.Background(), created.ID)
-	if len(invalidated) != 2 || invalidated[0] != 6 || invalidated[1] != 6 {
+	if len(invalidated) != 1 || invalidated[0] != 6 {
 		t.Fatalf("invalidated=%v", invalidated)
 	}
 }

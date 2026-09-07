@@ -122,11 +122,7 @@ func (r *CachedNoteRepository) ListPublishedBefore(ctx context.Context, authorID
 }
 
 func (r *CachedNoteRepository) SoftDelete(ctx context.Context, id, authorID int64) error {
-	if err := r.inner.SoftDelete(ctx, id, authorID); err != nil {
-		return err
-	}
-	r.Invalidate(ctx, id)
-	return nil
+	return r.inner.SoftDelete(ctx, id, authorID)
 }
 
 func (r *CachedNoteRepository) Invalidate(ctx context.Context, id int64) {
