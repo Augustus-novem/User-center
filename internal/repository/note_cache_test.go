@@ -5,14 +5,16 @@ import (
 	"errors"
 	"testing"
 	"user-center/internal/domain"
+	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
 	"user-center/pkg/logger"
 )
 
 type noteCacheStub struct {
-	getFn    func(ctx context.Context, id int64) (domain.Note, error)
-	setFn    func(ctx context.Context, note domain.Note) error
-	deleteFn func(ctx context.Context, id int64) error
+	getFn         func(ctx context.Context, id int64) (domain.Note, error)
+	setFn         func(ctx context.Context, note domain.Note) error
+	setNotFoundFn func(ctx context.Context, id int64) error
+	deleteFn      func(ctx context.Context, id int64) error
 }
 
 func (s *noteCacheStub) Get(ctx context.Context, id int64) (domain.Note, error) {
@@ -24,6 +26,13 @@ func (s *noteCacheStub) Set(ctx context.Context, note domain.Note) error {
 		return nil
 	}
 	return s.setFn(ctx, note)
+}
+
+func (s *noteCacheStub) SetNotFound(ctx context.Context, id int64) error {
+	if s.setNotFoundFn == nil {
+		return nil
+	}
+	return s.setNotFoundFn(ctx, id)
 }
 
 func (s *noteCacheStub) Delete(ctx context.Context, id int64) error {
@@ -72,6 +81,42 @@ func TestCachedNoteRepository_FindByIDMissLoadsAndCaches(t *testing.T) {
 	got, err := repo.FindByID(context.Background(), 4)
 	if err != nil || got.ID != 4 || cached.ID != 4 {
 		t.Fatalf("note=%+v cached=%+v err=%v", got, cached, err)
+	}
+}
+
+func TestCachedNoteRepository_FindByIDNegativeHitSkipsDatabase(t *testing.T) {
+	t.Parallel()
+	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{
+		findByIDFn: func(ctx context.Context, id int64) (dao.NoteOfDB, error) {
+			t.Fatal("database must not be called on negative cache hit")
+			return dao.NoteOfDB{}, nil
+		},
+	}), &noteCacheStub{getFn: func(ctx context.Context, id int64) (domain.Note, error) {
+		return domain.Note{}, cache.ErrNoteNotFound
+	}}, logger.NewNoOpLogger())
+
+	_, err := repo.FindByID(context.Background(), 404)
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Fatalf("want ErrNoteNotFound, got %v", err)
+	}
+}
+
+func TestCachedNoteRepository_FindByIDNotFoundWritesNegativeEntry(t *testing.T) {
+	t.Parallel()
+	var negativeID int64
+	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{}), &noteCacheStub{
+		getFn: func(ctx context.Context, id int64) (domain.Note, error) {
+			return domain.Note{}, errors.New("cache miss")
+		},
+		setNotFoundFn: func(ctx context.Context, id int64) error {
+			negativeID = id
+			return nil
+		},
+	}, logger.NewNoOpLogger())
+
+	_, err := repo.FindByID(context.Background(), 404)
+	if !errors.Is(err, ErrNoteNotFound) || negativeID != 404 {
+		t.Fatalf("err=%v negativeID=%d", err, negativeID)
 	}
 }
 

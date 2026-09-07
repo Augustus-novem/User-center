@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"user-center/internal/domain"
 	"user-center/internal/repository/cache"
 	"user-center/pkg/logger"
@@ -35,8 +36,16 @@ func (r *CachedNoteRepository) FindByID(ctx context.Context, id int64) (domain.N
 	if err == nil {
 		return note, nil
 	}
+	if errors.Is(err, cache.ErrNoteNotFound) {
+		return domain.Note{}, ErrNoteNotFound
+	}
 	note, err = r.inner.FindByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, ErrNoteNotFound) || errors.Is(err, ErrNoteDeleted) {
+			if cacheErr := r.cache.SetNotFound(ctx, id); cacheErr != nil {
+				r.logger.Warn("write negative note cache failed", logger.Error(cacheErr))
+			}
+		}
 		return domain.Note{}, err
 	}
 	if cacheErr := r.cache.Set(ctx, note); cacheErr != nil {

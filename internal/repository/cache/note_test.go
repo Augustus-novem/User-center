@@ -64,6 +64,30 @@ func TestRedisNoteCache_GetMiss(t *testing.T) {
 	}
 }
 
+func TestRedisNoteCache_NegativeEntry(t *testing.T) {
+	t.Parallel()
+	var stored string
+	var ttl time.Duration
+	cmd := &noteCmdableStub{
+		setFn: func(ctx context.Context, key string, value any, expiration time.Duration) *redis.StatusCmd {
+			stored = string(value.([]byte))
+			ttl = expiration
+			return redis.NewStatusResult("OK", nil)
+		},
+		getFn: func(ctx context.Context, key string) *redis.StringCmd {
+			return redis.NewStringResult(stored, nil)
+		},
+	}
+	c := NewRedisNoteCache(cmd)
+	if err := c.SetNotFound(context.Background(), 5); err != nil {
+		t.Fatalf("set not found: %v", err)
+	}
+	_, err := c.Get(context.Background(), 5)
+	if !errors.Is(err, ErrNoteNotFound) || ttl != noteNegativeCacheTTL {
+		t.Fatalf("err=%v ttl=%v", err, ttl)
+	}
+}
+
 func TestRedisNoteCache_SetAndDelete(t *testing.T) {
 	t.Parallel()
 	var setKey string
