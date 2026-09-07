@@ -12,6 +12,7 @@
 - 笔记详情使用 1 秒有界本地缓存、Redis 正/负缓存、TTL jitter 和进程内 singleflight；Redis 故障时回源 MySQL。
 - 笔记点赞/取消点赞、评论发布与时间序 cursor 分页。首次点赞和评论写入 Outbox。
 - 关注 Feed（Hybrid）：普通作者 `note.published` 扇出到 Redis Inbox；follower 数达到 `feed.fanout_threshold` 的作者改走 Pull。`GET /feed/following` 按 `note_id` 合并 Inbox 与大 V 近况。
+- 内容热榜：worker 将 publish/like/comment 聚合到 Redis 分钟桶；`GET /rank/hot` 使用 60 分钟物化 snapshot 稳定分页。
 - 每日签到、月度签到记录、连续签到天数。
 - 日榜、月榜及个人排名查询。
 - MySQL Outbox、Kafka Relay、两个 Consumer Group。
@@ -76,7 +77,9 @@ POST /checkin
 | `user.registered` | user-center Outbox Relay | `user-center-worker` | 欢迎积分 |
 | `user.registered` | user-center Outbox Relay | `user-center-notification-service` | Redis 欢迎消息 |
 | `user.activity` | user-center Outbox Relay | `user-center-worker` | 行为日志与签到排行 |
-| `note.published` | user-center Outbox Relay | `user-center-worker` | 普通作者扇出 Inbox；大 V 跳过扇出 |
+| `note.published` | user-center Outbox Relay | `user-center-worker` | Feed fanout/skip + Hot Ranking |
+| `note.liked` | user-center Outbox Relay | `user-center-worker` | Hot Ranking 加权聚合 |
+| `comment.created` | user-center Outbox Relay | `user-center-worker` | Hot Ranking 加权聚合 |
 
 Sarama producer 使用 `WaitForAll`，Relay 按 at-least-once 语义工作。Consumer handler 成功返回后才提交消息；消费者必须按可能重复投递设计。
 
@@ -97,6 +100,9 @@ Sarama producer 使用 `WaitForAll`，Relay 按 at-least-once 语义工作。Con
 | `welcome:message:user:{user_id}` | String/JSON | 当前欢迎通知 |
 | `feed:inbox:{user_id}` | ZSet | Following Feed Inbox，member/score 均为 note_id |
 | `note:detail:{note_id}` | String/JSON | 笔记详情正缓存或 not-found tombstone |
+| `hot:note:{yyyyMMddHHmm}` | ZSet | 内容热榜分钟桶 |
+| `hot:event:done:{event_id}` | String | 热榜事件原子去重 |
+| `hot:note:snapshot:{unix_minute}` | ZSet | 热榜稳定分页快照 |
 
 Redis 使用 DB 1。
 
