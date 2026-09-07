@@ -17,6 +17,7 @@ type NoteDAO interface {
 	FindByIDs(ctx context.Context, ids []int64) ([]NoteOfDB, error)
 	ListImages(ctx context.Context, noteID int64) ([]NoteImageOfDB, error)
 	ListByAuthor(ctx context.Context, authorID int64, status string, cursor *NoteCursor, limit int) ([]NoteOfDB, error)
+	ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]NoteOfDB, error)
 	SoftDelete(ctx context.Context, id, authorID int64) error
 }
 
@@ -100,6 +101,19 @@ func (d *GORMNoteDAO) ListByAuthor(ctx context.Context, authorID int64, status s
 	}
 	var rows []NoteOfDB
 	err := q.Order("created_at DESC, id DESC").Limit(limit).Find(&rows).Error
+	return rows, err
+}
+
+func (d *GORMNoteDAO) ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]NoteOfDB, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	q := dbFromCtx(ctx, d.db).Where("author_id = ? AND status = ?", authorID, "published")
+	if exclusiveMaxID > 0 {
+		q = q.Where("id < ?", exclusiveMaxID)
+	}
+	var rows []NoteOfDB
+	err := q.Order("id DESC").Limit(limit).Find(&rows).Error
 	return rows, err
 }
 

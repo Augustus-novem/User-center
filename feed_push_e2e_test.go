@@ -66,7 +66,7 @@ func TestPushFeed_NotePublishedFanoutE2E(t *testing.T) {
 	followRepo := repository.NewFollowRepositoryImpl(dao.NewGORMFollowDAO(db))
 	noteRepo := repository.NewNoteRepositoryImpl(dao.NewGORMNoteDAO(db))
 	inbox := cache.NewRedisFeedInbox(rdb, cfg.Feed.InboxLimit())
-	feedSvc := service.NewFeedServiceImpl(inbox, noteRepo, followRepo, cfg.Feed.FanoutBatch(), appLogger)
+	feedSvc := service.NewFeedServiceImpl(inbox, noteRepo, followRepo, cfg.Feed.FanoutBatch(), cfg.Feed.CelebrityThreshold(), appLogger)
 	handler := worker.NewNotePublishedHandler(
 		feedSvc,
 		worker.NewRedisDeduplicator(rdb, worker.NotePublishedDeduperNamespace),

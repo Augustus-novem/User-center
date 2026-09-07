@@ -17,6 +17,8 @@ type FollowDAO interface {
 	ListFollowing(ctx context.Context, followerID int64, cursor *FollowCursor, limit int) ([]UserRelationOfDB, error)
 	ListFollowers(ctx context.Context, followeeID int64, cursor *FollowCursor, limit int) ([]UserRelationOfDB, error)
 	ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
+	CountFollowers(ctx context.Context, followeeID int64) (int64, error)
+	FilterIDsByMinFollowers(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error)
 }
 
 type FollowCursor struct {
@@ -80,6 +82,30 @@ func (d *GORMFollowDAO) ListFolloweeIDs(ctx context.Context, followerID int64, f
 	err := dbFromCtx(ctx, d.db).
 		Model(&UserRelationOfDB{}).
 		Where("follower_id = ? AND followee_id IN ?", followerID, followeeIDs).
+		Pluck("followee_id", &ids).Error
+	return ids, err
+}
+
+func (d *GORMFollowDAO) CountFollowers(ctx context.Context, followeeID int64) (int64, error) {
+	var n int64
+	err := dbFromCtx(ctx, d.db).
+		Model(&UserRelationOfDB{}).
+		Where("followee_id = ?", followeeID).
+		Count(&n).Error
+	return n, err
+}
+
+func (d *GORMFollowDAO) FilterIDsByMinFollowers(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+	if len(followeeIDs) == 0 || minFollowers <= 0 {
+		return nil, nil
+	}
+	var ids []int64
+	err := dbFromCtx(ctx, d.db).
+		Model(&UserRelationOfDB{}).
+		Select("followee_id").
+		Where("followee_id IN ?", followeeIDs).
+		Group("followee_id").
+		Having("COUNT(*) >= ?", minFollowers).
 		Pluck("followee_id", &ids).Error
 	return ids, err
 }

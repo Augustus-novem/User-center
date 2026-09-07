@@ -186,6 +186,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("feature.enable_debug_log", false)
 	v.SetDefault("feed.fanout_batch_size", 200)
 	v.SetDefault("feed.inbox_max_items", 500)
+	v.SetDefault("feed.fanout_threshold", 1000)
 }
 
 func bindEnvs(v *viper.Viper) {
@@ -259,6 +260,9 @@ func validate(cfg AppConfig) error {
 	}
 	if cfg.Feed.InboxMaxItems < 0 {
 		return fmt.Errorf("feed.inbox_max_items 不能小于 0")
+	}
+	if cfg.Feed.FanoutThreshold < 0 {
+		return fmt.Errorf("feed.fanout_threshold 不能小于 0")
 	}
 	if cfg.JWT.AccessTokenTTL <= 0 {
 		return fmt.Errorf("jwt.access_token_ttl 必须大于 0")

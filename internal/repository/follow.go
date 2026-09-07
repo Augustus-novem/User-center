@@ -14,6 +14,8 @@ type FollowRepository interface {
 	ListFollowing(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
 	ListFollowers(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
 	ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
+	CountFollowers(ctx context.Context, followeeID int64) (int64, error)
+	FilterIDsByMinFollowers(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error)
 }
 
 type FollowRepositoryImpl struct {
@@ -53,6 +55,14 @@ func (r *FollowRepositoryImpl) ListFollowers(ctx context.Context, followeeID int
 
 func (r *FollowRepositoryImpl) ListFolloweeIDs(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error) {
 	return r.dao.ListFolloweeIDs(ctx, followerID, followeeIDs)
+}
+
+func (r *FollowRepositoryImpl) CountFollowers(ctx context.Context, followeeID int64) (int64, error) {
+	return r.dao.CountFollowers(ctx, followeeID)
+}
+
+func (r *FollowRepositoryImpl) FilterIDsByMinFollowers(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+	return r.dao.FilterIDsByMinFollowers(ctx, followeeIDs, minFollowers)
 }
 
 func toDAOFollowCursor(cursor *domain.FollowCursor) *dao.FollowCursor {

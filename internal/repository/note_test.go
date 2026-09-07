@@ -9,13 +9,14 @@ import (
 )
 
 type noteDAOStub struct {
-	insertFn       func(ctx context.Context, note dao.NoteOfDB) (dao.NoteOfDB, error)
-	insertImagesFn func(ctx context.Context, images []dao.NoteImageOfDB) error
-	findByIDFn     func(ctx context.Context, id int64) (dao.NoteOfDB, error)
-	findByIDsFn    func(ctx context.Context, ids []int64) ([]dao.NoteOfDB, error)
-	listImagesFn   func(ctx context.Context, noteID int64) ([]dao.NoteImageOfDB, error)
-	listByAuthorFn func(ctx context.Context, authorID int64, status string, cursor *dao.NoteCursor, limit int) ([]dao.NoteOfDB, error)
-	softDeleteFn   func(ctx context.Context, id, authorID int64) error
+	insertFn              func(ctx context.Context, note dao.NoteOfDB) (dao.NoteOfDB, error)
+	insertImagesFn        func(ctx context.Context, images []dao.NoteImageOfDB) error
+	findByIDFn            func(ctx context.Context, id int64) (dao.NoteOfDB, error)
+	findByIDsFn           func(ctx context.Context, ids []int64) ([]dao.NoteOfDB, error)
+	listImagesFn          func(ctx context.Context, noteID int64) ([]dao.NoteImageOfDB, error)
+	listByAuthorFn        func(ctx context.Context, authorID int64, status string, cursor *dao.NoteCursor, limit int) ([]dao.NoteOfDB, error)
+	listPublishedBeforeFn func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]dao.NoteOfDB, error)
+	softDeleteFn          func(ctx context.Context, id, authorID int64) error
 }
 
 func (s *noteDAOStub) Insert(ctx context.Context, note dao.NoteOfDB) (dao.NoteOfDB, error) {
@@ -59,6 +60,13 @@ func (s *noteDAOStub) ListByAuthor(ctx context.Context, authorID int64, status s
 		return nil, nil
 	}
 	return s.listByAuthorFn(ctx, authorID, status, cursor, limit)
+}
+
+func (s *noteDAOStub) ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]dao.NoteOfDB, error) {
+	if s.listPublishedBeforeFn == nil {
+		return nil, nil
+	}
+	return s.listPublishedBeforeFn(ctx, authorID, exclusiveMaxID, limit)
 }
 
 func (s *noteDAOStub) SoftDelete(ctx context.Context, id, authorID int64) error {

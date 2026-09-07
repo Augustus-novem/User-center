@@ -53,7 +53,7 @@ func main() {
 	followRepo := repository.NewFollowRepositoryImpl(dao.NewGORMFollowDAO(db))
 	noteRepo := repository.NewNoteRepositoryImpl(dao.NewGORMNoteDAO(db))
 	feedInbox := cache.NewRedisFeedInbox(rdb, cfg.Feed.InboxLimit())
-	feedSvc := service.NewFeedServiceImpl(feedInbox, noteRepo, followRepo, cfg.Feed.FanoutBatch(), appLogger)
+	feedSvc := service.NewFeedServiceImpl(feedInbox, noteRepo, followRepo, cfg.Feed.FanoutBatch(), cfg.Feed.CelebrityThreshold(), appLogger)
 
 	registeredHandler := worker.NewUserRegisteredHandler(pointRepo, registeredDeduper, appLogger)
 	activityHandler := worker.NewUserActivityHandler(activityProcessor, appLogger)

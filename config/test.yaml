@@ -89,3 +89,4 @@ feature:
 feed:
   fanout_batch_size: 50
   inbox_max_items: 100
+  fanout_threshold: 3

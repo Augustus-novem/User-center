@@ -2,13 +2,18 @@ package service
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"user-center/internal/domain"
 	"user-center/internal/repository"
 	"user-center/pkg/logger"
 )
 
-const maxFeedHydrateRounds = 20
+const (
+	maxFeedHydrateRounds    = 20
+	celebrityFollowPage     = 50
+	maxCelebrityFollowPages = 20
+)
 
 type FeedService interface {
 	ListFollowing(ctx context.Context, userID int64, cursor string, limit int) (domain.NotePage, error)
@@ -20,6 +25,7 @@ type FeedServiceImpl struct {
 	notes       repository.NoteRepository
 	follows     repository.FollowRepository
 	fanoutBatch int
+	threshold   int
 	logger      logger.Logger
 }
 
@@ -28,10 +34,14 @@ func NewFeedServiceImpl(
 	notes repository.NoteRepository,
 	follows repository.FollowRepository,
 	fanoutBatch int,
+	threshold int,
 	l logger.Logger,
 ) *FeedServiceImpl {
 	if fanoutBatch <= 0 {
 		fanoutBatch = 200
+	}
+	if threshold < 0 {
+		threshold = 0
 	}
 	if l == nil {
 		l = logger.NewNoOpLogger()
@@ -41,6 +51,7 @@ func NewFeedServiceImpl(
 		notes:       notes,
 		follows:     follows,
 		fanoutBatch: fanoutBatch,
+		threshold:   threshold,
 		logger:      l,
 	}
 }
@@ -48,6 +59,21 @@ func NewFeedServiceImpl(
 func (s *FeedServiceImpl) FanoutPublished(ctx context.Context, noteID, authorID int64) error {
 	if noteID <= 0 || authorID <= 0 {
 		return ErrInvalidNoteID
+	}
+	if s.threshold > 0 {
+		n, err := s.follows.CountFollowers(ctx, authorID)
+		if err != nil {
+			return err
+		}
+		if n >= int64(s.threshold) {
+			s.logger.Info("跳过大 V 扇出",
+				logger.Field{Key: "note_id", Value: noteID},
+				logger.Field{Key: "user_id", Value: authorID},
+				logger.Field{Key: "follower_count", Value: n},
+				logger.Field{Key: "fanout_threshold", Value: s.threshold},
+			)
+			return nil
+		}
 	}
 	var cursor *domain.FollowCursor
 	for {
@@ -83,49 +109,44 @@ func (s *FeedServiceImpl) ListFollowing(ctx context.Context, userID int64, curso
 	}
 	limit = normalizeNoteLimit(limit)
 	need := limit + 1
-	items := make([]domain.Note, 0, need)
 	readBatch := need
 	if readBatch < 20 {
 		readBatch = 20
 	}
+	celebNotes, err := s.celebrityNotes(ctx, userID, exclusiveMax, need)
+	if err != nil {
+		return domain.NotePage{}, err
+	}
+	items := make([]domain.Note, 0, need)
+	seen := make(map[int64]struct{}, need)
+	inboxMax := exclusiveMax
 	for round := 0; round < maxFeedHydrateRounds && len(items) < need; round++ {
-		ids, err := s.inbox.List(ctx, userID, exclusiveMax, readBatch)
+		ids, err := s.inbox.List(ctx, userID, inboxMax, readBatch)
 		if err != nil {
 			return domain.NotePage{}, err
 		}
-		if len(ids) == 0 {
-			break
-		}
-		notes, err := s.notes.FindByIDs(ctx, ids)
+		hydrated, err := s.hydrateInbox(ctx, userID, ids)
 		if err != nil {
 			return domain.NotePage{}, err
 		}
-		authors := make([]int64, 0, len(notes))
-		for _, id := range ids {
-			note, ok := notes[id]
-			if !ok || note.Status != domain.NoteStatusPublished {
+		merged := mergeNotesByIDDesc(hydrated, celebNotes)
+		for _, note := range merged {
+			if exclusiveMax > 0 && note.ID >= exclusiveMax {
 				continue
 			}
-			authors = append(authors, note.AuthorID)
-		}
-		following, err := s.followingSet(ctx, userID, authors)
-		if err != nil {
-			return domain.NotePage{}, err
-		}
-		for _, id := range ids {
-			exclusiveMax = id
-			note, ok := notes[id]
-			if !ok || note.Status != domain.NoteStatusPublished {
+			if _, ok := seen[note.ID]; ok {
 				continue
 			}
-			if _, ok = following[note.AuthorID]; !ok {
-				continue
-			}
+			seen[note.ID] = struct{}{}
 			items = append(items, note)
 			if len(items) == need {
 				break
 			}
 		}
+		if len(ids) == 0 {
+			break
+		}
+		inboxMax = ids[len(ids)-1]
 		if len(ids) < readBatch {
 			break
 		}
@@ -141,6 +162,78 @@ func (s *FeedServiceImpl) ListFollowing(ctx context.Context, userID int64, curso
 	return page, nil
 }
 
+func (s *FeedServiceImpl) hydrateInbox(ctx context.Context, userID int64, ids []int64) ([]domain.Note, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	notes, err := s.notes.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	authors := make([]int64, 0, len(notes))
+	for _, id := range ids {
+		note, ok := notes[id]
+		if !ok || note.Status != domain.NoteStatusPublished {
+			continue
+		}
+		authors = append(authors, note.AuthorID)
+	}
+	following, err := s.followingSet(ctx, userID, authors)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Note, 0, len(ids))
+	for _, id := range ids {
+		note, ok := notes[id]
+		if !ok || note.Status != domain.NoteStatusPublished {
+			continue
+		}
+		if _, ok = following[note.AuthorID]; !ok {
+			continue
+		}
+		out = append(out, note)
+	}
+	return out, nil
+}
+
+func (s *FeedServiceImpl) celebrityNotes(ctx context.Context, userID, exclusiveMax int64, limit int) ([]domain.Note, error) {
+	if s.threshold <= 0 {
+		return nil, nil
+	}
+	var cursor *domain.FollowCursor
+	out := make([]domain.Note, 0)
+	for round := 0; round < maxCelebrityFollowPages; round++ {
+		rels, err := s.follows.ListFollowing(ctx, userID, cursor, celebrityFollowPage)
+		if err != nil {
+			return nil, err
+		}
+		if len(rels) == 0 {
+			break
+		}
+		ids := make([]int64, 0, len(rels))
+		for _, rel := range rels {
+			ids = append(ids, rel.FolloweeID)
+		}
+		celebs, err := s.follows.FilterIDsByMinFollowers(ctx, ids, s.threshold)
+		if err != nil {
+			return nil, err
+		}
+		for _, authorID := range celebs {
+			rows, err := s.notes.ListPublishedBefore(ctx, authorID, exclusiveMax, limit)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, rows...)
+		}
+		if len(rels) < celebrityFollowPage {
+			break
+		}
+		last := rels[len(rels)-1]
+		cursor = &domain.FollowCursor{CreatedAt: last.CreatedAt, ID: last.ID}
+	}
+	return out, nil
+}
+
 func (s *FeedServiceImpl) followingSet(ctx context.Context, followerID int64, authorIDs []int64) (map[int64]struct{}, error) {
 	ids, err := s.follows.ListFolloweeIDs(ctx, followerID, authorIDs)
 	if err != nil {
@@ -151,6 +244,26 @@ func (s *FeedServiceImpl) followingSet(ctx context.Context, followerID int64, au
 		set[id] = struct{}{}
 	}
 	return set, nil
+}
+
+func mergeNotesByIDDesc(a, b []domain.Note) []domain.Note {
+	merged := make(map[int64]domain.Note, len(a)+len(b))
+	for _, note := range a {
+		merged[note.ID] = note
+	}
+	for _, note := range b {
+		merged[note.ID] = note
+	}
+	ids := make([]int64, 0, len(merged))
+	for id := range merged {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] > ids[j] })
+	out := make([]domain.Note, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, merged[id])
+	}
+	return out
 }
 
 func encodeFeedCursor(noteID int64) string {

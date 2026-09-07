@@ -9,11 +9,13 @@ import (
 )
 
 type followDAOStub struct {
-	insertFn          func(ctx context.Context, rel dao.UserRelationOfDB) error
-	deleteFn          func(ctx context.Context, followerID, followeeID int64) error
-	listFollowingFn   func(ctx context.Context, followerID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
-	listFollowersFn   func(ctx context.Context, followeeID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
-	listFolloweeIDsFn func(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
+	insertFn                  func(ctx context.Context, rel dao.UserRelationOfDB) error
+	deleteFn                  func(ctx context.Context, followerID, followeeID int64) error
+	listFollowingFn           func(ctx context.Context, followerID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
+	listFollowersFn           func(ctx context.Context, followeeID int64, cursor *dao.FollowCursor, limit int) ([]dao.UserRelationOfDB, error)
+	listFolloweeIDsFn         func(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
+	countFollowersFn          func(ctx context.Context, followeeID int64) (int64, error)
+	filterIDsByMinFollowersFn func(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error)
 }
 
 func (s *followDAOStub) Insert(ctx context.Context, rel dao.UserRelationOfDB) error {
@@ -49,6 +51,20 @@ func (s *followDAOStub) ListFolloweeIDs(ctx context.Context, followerID int64, f
 		return nil, nil
 	}
 	return s.listFolloweeIDsFn(ctx, followerID, followeeIDs)
+}
+
+func (s *followDAOStub) CountFollowers(ctx context.Context, followeeID int64) (int64, error) {
+	if s.countFollowersFn == nil {
+		return 0, nil
+	}
+	return s.countFollowersFn(ctx, followeeID)
+}
+
+func (s *followDAOStub) FilterIDsByMinFollowers(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+	if s.filterIDsByMinFollowersFn == nil {
+		return nil, nil
+	}
+	return s.filterIDsByMinFollowersFn(ctx, followeeIDs, minFollowers)
 }
 
 func TestFollowRepositoryImpl_CreateMapsDuplicate(t *testing.T) {

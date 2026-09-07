@@ -28,5 +28,5 @@ func InitFeedService(
 	cfg *config.AppConfig,
 	l logger.Logger,
 ) *service.FeedServiceImpl {
-	return service.NewFeedServiceImpl(inbox, notes, follows, cfg.Feed.FanoutBatch(), l)
+	return service.NewFeedServiceImpl(inbox, notes, follows, cfg.Feed.FanoutBatch(), cfg.Feed.CelebrityThreshold(), l)
 }

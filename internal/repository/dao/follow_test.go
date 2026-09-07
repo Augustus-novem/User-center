@@ -117,6 +117,19 @@ func TestGORMFollowDAO_ListFolloweeIDs(t *testing.T) {
 	}
 }
 
+func TestGORMFollowDAO_CountFollowers(t *testing.T) {
+	t.Parallel()
+	db, mock, cleanup := newFollowMockDB(t)
+	defer cleanup()
+	mock.ExpectQuery("SELECT count.* FROM .*user_relations.*").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(4))
+
+	n, err := NewGORMFollowDAO(db).CountFollowers(context.Background(), 9)
+	if err != nil || n != 4 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+}
+
 func newFollowMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, func()) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New()

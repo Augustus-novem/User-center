@@ -83,7 +83,11 @@ func sortedNoteIDs(set map[int64]struct{}) []int64 {
 }
 
 func newTestFeedService(inbox *memFeedInbox, notes *noteRepoStub, follows *followRepoStub, batch int) *FeedServiceImpl {
-	return NewFeedServiceImpl(inbox, notes, follows, batch, logger.NewNoOpLogger())
+	return NewFeedServiceImpl(inbox, notes, follows, batch, 0, logger.NewNoOpLogger())
+}
+
+func newHybridFeedService(inbox *memFeedInbox, notes *noteRepoStub, follows *followRepoStub, batch, threshold int) *FeedServiceImpl {
+	return NewFeedServiceImpl(inbox, notes, follows, batch, threshold, logger.NewNoOpLogger())
 }
 
 func TestFeedService_FanoutPublished(t *testing.T) {
@@ -346,6 +350,189 @@ func TestFeedService_ListFollowingFromInbox(t *testing.T) {
 		page, err := svc.ListFollowing(context.Background(), 1, "", 10)
 		if err != nil || len(page.Items) != 1 || page.Items[0].ID != 8 {
 			t.Fatalf("want remaining followee note, got %+v err=%v", page, err)
+		}
+	})
+}
+
+func TestFeedService_HybridFanoutAndMerge(t *testing.T) {
+	t.Parallel()
+	published := func(id, author int64) domain.Note {
+		return domain.Note{ID: id, AuthorID: author, Title: "n", Status: domain.NoteStatusPublished}
+	}
+
+	t.Run("normal author below threshold is fanned out", func(t *testing.T) {
+		t.Parallel()
+		inbox := newMemFeedInbox()
+		svc := newHybridFeedService(inbox, &noteRepoStub{}, &followRepoStub{
+			countFollowersFn: func(ctx context.Context, followeeID int64) (int64, error) {
+				return 2, nil
+			},
+			listFollowersFn: func(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				if cursor != nil {
+					return nil, nil
+				}
+				return []domain.UserRelation{{ID: 1, FollowerID: 7, FolloweeID: followeeID}}, nil
+			},
+		}, 10, 3)
+		if err := svc.FanoutPublished(context.Background(), 11, 1); err != nil {
+			t.Fatalf("FanoutPublished: %v", err)
+		}
+		if got := inbox.noteIDs(7); len(got) != 1 || got[0] != 11 {
+			t.Fatalf("want fanout, inbox=%v", got)
+		}
+	})
+
+	t.Run("celebrity at threshold is not fanned out", func(t *testing.T) {
+		t.Parallel()
+		inbox := newMemFeedInbox()
+		svc := newHybridFeedService(inbox, &noteRepoStub{}, &followRepoStub{
+			countFollowersFn: func(ctx context.Context, followeeID int64) (int64, error) {
+				return 3, nil
+			},
+			listFollowersFn: func(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				t.Fatal("celebrity must not page followers")
+				return nil, nil
+			},
+		}, 10, 3)
+		if err := svc.FanoutPublished(context.Background(), 11, 9); err != nil {
+			t.Fatalf("FanoutPublished: %v", err)
+		}
+		if inbox.calls != 0 {
+			t.Fatalf("celebrity fanout writes=%d", inbox.calls)
+		}
+	})
+
+	t.Run("mixed follow merges inbox and celebrity pull by note_id", func(t *testing.T) {
+		t.Parallel()
+		inbox := newMemFeedInbox()
+		_ = inbox.AddToUsers(context.Background(), []int64{1}, 10)
+		notes := &noteRepoStub{
+			findByIDFn: func(ctx context.Context, id int64) (domain.Note, error) {
+				return published(id, 8), nil
+			},
+			listPublishedBeforeFn: func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+				if authorID != 9 {
+					return nil, nil
+				}
+				return []domain.Note{published(20, 9), published(5, 9)}, nil
+			},
+		}
+		follows := &followRepoStub{
+			listFollowingFn: func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				if cursor != nil {
+					return nil, nil
+				}
+				return []domain.UserRelation{
+					{ID: 2, FollowerID: 1, FolloweeID: 9, CreatedAt: 2},
+					{ID: 1, FollowerID: 1, FolloweeID: 8, CreatedAt: 1},
+				}, nil
+			},
+			filterIDsByMinFollowersFn: func(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+				return []int64{9}, nil
+			},
+		}
+		svc := newHybridFeedService(inbox, notes, follows, 10, 3)
+		page, err := svc.ListFollowing(context.Background(), 1, "", 10)
+		if err != nil {
+			t.Fatalf("ListFollowing: %v", err)
+		}
+		if len(page.Items) != 3 || page.Items[0].ID != 20 || page.Items[1].ID != 10 || page.Items[2].ID != 5 {
+			t.Fatalf("merge order=%+v", page.Items)
+		}
+	})
+
+	t.Run("duplicate inbox and pull note appears once", func(t *testing.T) {
+		t.Parallel()
+		inbox := newMemFeedInbox()
+		_ = inbox.AddToUsers(context.Background(), []int64{1}, 7)
+		notes := &noteRepoStub{
+			findByIDFn: func(ctx context.Context, id int64) (domain.Note, error) {
+				return published(7, 9), nil
+			},
+			listPublishedBeforeFn: func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+				return []domain.Note{published(7, 9)}, nil
+			},
+		}
+		follows := &followRepoStub{
+			listFollowingFn: func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				if cursor != nil {
+					return nil, nil
+				}
+				return []domain.UserRelation{{ID: 1, FollowerID: 1, FolloweeID: 9}}, nil
+			},
+			filterIDsByMinFollowersFn: func(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+				return []int64{9}, nil
+			},
+		}
+		svc := newHybridFeedService(inbox, notes, follows, 10, 3)
+		page, err := svc.ListFollowing(context.Background(), 1, "", 10)
+		if err != nil || len(page.Items) != 1 || page.Items[0].ID != 7 {
+			t.Fatalf("want single note, got %+v err=%v", page, err)
+		}
+	})
+
+	t.Run("unfollowed celebrity is not pulled", func(t *testing.T) {
+		t.Parallel()
+		inbox := newMemFeedInbox()
+		notes := &noteRepoStub{
+			listPublishedBeforeFn: func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+				t.Fatal("unfollowed celebrity must not be pulled")
+				return nil, nil
+			},
+		}
+		follows := &followRepoStub{
+			listFollowingFn: func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				return nil, nil
+			},
+		}
+		svc := newHybridFeedService(inbox, notes, follows, 10, 3)
+		page, err := svc.ListFollowing(context.Background(), 1, "", 10)
+		if err != nil || len(page.Items) != 0 {
+			t.Fatalf("page=%+v err=%v", page, err)
+		}
+	})
+
+	t.Run("new celebrity note between pages is not duplicated", func(t *testing.T) {
+		t.Parallel()
+		inbox := newMemFeedInbox()
+		_ = inbox.AddToUsers(context.Background(), []int64{1}, 3)
+		_ = inbox.AddToUsers(context.Background(), []int64{1}, 1)
+		celeb := []domain.Note{published(4, 9), published(2, 9)}
+		notes := &noteRepoStub{
+			findByIDFn: func(ctx context.Context, id int64) (domain.Note, error) {
+				return published(id, 8), nil
+			},
+			listPublishedBeforeFn: func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+				out := make([]domain.Note, 0)
+				for _, n := range celeb {
+					if exclusiveMaxID > 0 && n.ID >= exclusiveMaxID {
+						continue
+					}
+					out = append(out, n)
+				}
+				return out, nil
+			},
+		}
+		follows := &followRepoStub{
+			listFollowingFn: func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				if cursor != nil {
+					return nil, nil
+				}
+				return []domain.UserRelation{{ID: 1, FollowerID: 1, FolloweeID: 9}}, nil
+			},
+			filterIDsByMinFollowersFn: func(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+				return []int64{9}, nil
+			},
+		}
+		svc := newHybridFeedService(inbox, notes, follows, 10, 3)
+		page1, err := svc.ListFollowing(context.Background(), 1, "", 1)
+		if err != nil || page1.Items[0].ID != 4 {
+			t.Fatalf("page1=%+v err=%v", page1, err)
+		}
+		celeb = append([]domain.Note{published(5, 9)}, celeb...)
+		page2, err := svc.ListFollowing(context.Background(), 1, page1.NextCursor, 1)
+		if err != nil || page2.Items[0].ID != 3 {
+			t.Fatalf("page2 should continue older merge, got %+v err=%v", page2, err)
 		}
 	})
 }

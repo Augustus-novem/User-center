@@ -115,6 +115,7 @@ type FeatureConfig struct {
 type FeedConfig struct {
 	FanoutBatchSize int `mapstructure:"fanout_batch_size"`
 	InboxMaxItems   int `mapstructure:"inbox_max_items"`
+	FanoutThreshold int `mapstructure:"fanout_threshold"`
 }
 
 func (c FeedConfig) FanoutBatch() int {
@@ -129,6 +130,13 @@ func (c FeedConfig) InboxLimit() int {
 		return 500
 	}
 	return c.InboxMaxItems
+}
+
+func (c FeedConfig) CelebrityThreshold() int {
+	if c.FanoutThreshold <= 0 {
+		return 0
+	}
+	return c.FanoutThreshold
 }
 
 type DynamicConfig struct {

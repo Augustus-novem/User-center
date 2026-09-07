@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"testing"
 	"user-center/internal/domain"
@@ -12,10 +13,11 @@ import (
 )
 
 type noteRepoStub struct {
-	createFn       func(ctx context.Context, note domain.Note) (domain.Note, error)
-	findByIDFn     func(ctx context.Context, id int64) (domain.Note, error)
-	listByAuthorFn func(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error)
-	softDeleteFn   func(ctx context.Context, id, authorID int64) error
+	createFn              func(ctx context.Context, note domain.Note) (domain.Note, error)
+	findByIDFn            func(ctx context.Context, id int64) (domain.Note, error)
+	listByAuthorFn        func(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error)
+	listPublishedBeforeFn func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error)
+	softDeleteFn          func(ctx context.Context, id, authorID int64) error
 }
 
 func (s *noteRepoStub) Create(ctx context.Context, note domain.Note) (domain.Note, error) {
@@ -50,6 +52,13 @@ func (s *noteRepoStub) ListByAuthor(ctx context.Context, authorID int64, cursor 
 		return nil, nil
 	}
 	return s.listByAuthorFn(ctx, authorID, cursor, limit)
+}
+
+func (s *noteRepoStub) ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+	if s.listPublishedBeforeFn == nil {
+		return nil, nil
+	}
+	return s.listPublishedBeforeFn(ctx, authorID, exclusiveMaxID, limit)
 }
 
 func (s *noteRepoStub) SoftDelete(ctx context.Context, id, authorID int64) error {
@@ -216,6 +225,30 @@ func (s *memNoteStore) FindByIDs(ctx context.Context, ids []int64) (map[int64]do
 		}
 	}
 	return res, nil
+}
+
+func (s *memNoteStore) ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]int64, 0)
+	for id, note := range s.notes {
+		if note.AuthorID != authorID || note.Status != domain.NoteStatusPublished {
+			continue
+		}
+		if exclusiveMaxID > 0 && id >= exclusiveMaxID {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] > ids[j] })
+	if limit > 0 && len(ids) > limit {
+		ids = ids[:limit]
+	}
+	out := make([]domain.Note, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, s.notes[id])
+	}
+	return out, nil
 }
 
 func (s *memNoteStore) ListByAuthor(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error) {

@@ -17,6 +17,7 @@ type NoteRepository interface {
 	FindByID(ctx context.Context, id int64) (domain.Note, error)
 	FindByIDs(ctx context.Context, ids []int64) (map[int64]domain.Note, error)
 	ListByAuthor(ctx context.Context, authorID int64, cursor *domain.FollowCursor, limit int) ([]domain.Note, error)
+	ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error)
 	SoftDelete(ctx context.Context, id, authorID int64) error
 }
 
@@ -87,6 +88,18 @@ func (r *NoteRepositoryImpl) ListByAuthor(ctx context.Context, authorID int64, c
 		daoCursor = &dao.NoteCursor{CreatedAt: cursor.CreatedAt, ID: cursor.ID}
 	}
 	rows, err := r.dao.ListByAuthor(ctx, authorID, domain.NoteStatusPublished, daoCursor, limit)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]domain.Note, 0, len(rows))
+	for _, row := range rows {
+		res = append(res, toDomainNote(row, nil))
+	}
+	return res, nil
+}
+
+func (r *NoteRepositoryImpl) ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+	rows, err := r.dao.ListPublishedBefore(ctx, authorID, exclusiveMaxID, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -11,11 +11,13 @@ import (
 )
 
 type followRepoStub struct {
-	createFn          func(ctx context.Context, followerID, followeeID int64) error
-	deleteFn          func(ctx context.Context, followerID, followeeID int64) error
-	listFollowingFn   func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
-	listFollowersFn   func(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
-	listFolloweeIDsFn func(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
+	createFn                  func(ctx context.Context, followerID, followeeID int64) error
+	deleteFn                  func(ctx context.Context, followerID, followeeID int64) error
+	listFollowingFn           func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
+	listFollowersFn           func(ctx context.Context, followeeID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error)
+	listFolloweeIDsFn         func(ctx context.Context, followerID int64, followeeIDs []int64) ([]int64, error)
+	countFollowersFn          func(ctx context.Context, followeeID int64) (int64, error)
+	filterIDsByMinFollowersFn func(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error)
 }
 
 func (s *followRepoStub) Create(ctx context.Context, followerID, followeeID int64) error {
@@ -51,6 +53,20 @@ func (s *followRepoStub) ListFolloweeIDs(ctx context.Context, followerID int64, 
 		return followeeIDs, nil
 	}
 	return s.listFolloweeIDsFn(ctx, followerID, followeeIDs)
+}
+
+func (s *followRepoStub) CountFollowers(ctx context.Context, followeeID int64) (int64, error) {
+	if s.countFollowersFn == nil {
+		return 0, nil
+	}
+	return s.countFollowersFn(ctx, followeeID)
+}
+
+func (s *followRepoStub) FilterIDsByMinFollowers(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+	if s.filterIDsByMinFollowersFn == nil {
+		return nil, nil
+	}
+	return s.filterIDsByMinFollowersFn(ctx, followeeIDs, minFollowers)
 }
 
 func newFollowService(followRepo repository.FollowRepository, users repository.UserRepository) *FollowServiceImpl {
@@ -297,6 +313,32 @@ func (r *memFollowRepo) ListFolloweeIDs(ctx context.Context, followerID int64, f
 	out := make([]int64, 0, len(followeeIDs))
 	for _, id := range followeeIDs {
 		if _, ok := r.byPair[[2]int64{followerID, id}]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+func (r *memFollowRepo) CountFollowers(ctx context.Context, followeeID int64) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var n int64
+	for key := range r.byPair {
+		if key[1] == followeeID {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (r *memFollowRepo) FilterIDsByMinFollowers(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+	out := make([]int64, 0)
+	for _, id := range followeeIDs {
+		n, err := r.CountFollowers(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if n >= int64(minFollowers) {
 			out = append(out, id)
 		}
 	}
