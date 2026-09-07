@@ -83,7 +83,7 @@ func TestRedisNoteCache_NegativeEntry(t *testing.T) {
 		t.Fatalf("set not found: %v", err)
 	}
 	_, err := c.Get(context.Background(), 5)
-	if !errors.Is(err, ErrNoteNotFound) || ttl != noteNegativeCacheTTL {
+	if !errors.Is(err, ErrNoteNotFound) || !isWithinJitter(ttl, noteNegativeCacheTTL) {
 		t.Fatalf("err=%v ttl=%v", err, ttl)
 	}
 }
@@ -110,7 +110,24 @@ func TestRedisNoteCache_SetAndDelete(t *testing.T) {
 	if err := c.Delete(context.Background(), 7); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if setKey != "note:detail:7" || deleted != setKey || ttl != noteCacheTTL {
+	if setKey != "note:detail:7" || deleted != setKey || !isWithinJitter(ttl, noteCacheTTL) {
 		t.Fatalf("set=%q deleted=%q ttl=%v", setKey, deleted, ttl)
 	}
+}
+
+func TestTTLWithJitterBounds(t *testing.T) {
+	t.Parallel()
+	maxJitter := noteCacheTTL / noteCacheJitterRatio
+	span := uint64(maxJitter*2) + 1
+	if got := ttlWithJitter(noteCacheTTL, 0); got != noteCacheTTL-maxJitter {
+		t.Fatalf("lower bound=%v", got)
+	}
+	if got := ttlWithJitter(noteCacheTTL, span-1); got != noteCacheTTL+maxJitter {
+		t.Fatalf("upper bound=%v", got)
+	}
+}
+
+func isWithinJitter(got, base time.Duration) bool {
+	maxJitter := base / noteCacheJitterRatio
+	return got >= base-maxJitter && got <= base+maxJitter
 }

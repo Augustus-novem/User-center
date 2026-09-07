@@ -2,6 +2,8 @@ package cache
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 const (
 	noteCacheTTL         = 10 * time.Minute
 	noteNegativeCacheTTL = time.Minute
+	noteCacheJitterRatio = 10
 )
 
 var ErrNoteNotFound = errors.New("note cache stores not found")
@@ -61,7 +64,7 @@ func (c *RedisNoteCache) SetNotFound(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	return c.cmd.Set(ctx, c.key(id), data, noteNegativeCacheTTL).Err()
+	return c.cmd.Set(ctx, c.key(id), data, jitterTTL(noteNegativeCacheTTL)).Err()
 }
 
 func (c *RedisNoteCache) Set(ctx context.Context, note domain.Note) error {
@@ -69,7 +72,22 @@ func (c *RedisNoteCache) Set(ctx context.Context, note domain.Note) error {
 	if err != nil {
 		return err
 	}
-	return c.cmd.Set(ctx, c.key(note.ID), data, noteCacheTTL).Err()
+	return c.cmd.Set(ctx, c.key(note.ID), data, jitterTTL(noteCacheTTL)).Err()
+}
+
+func jitterTTL(base time.Duration) time.Duration {
+	var entropy [8]byte
+	if _, err := cryptorand.Read(entropy[:]); err != nil {
+		return base
+	}
+	return ttlWithJitter(base, binary.LittleEndian.Uint64(entropy[:]))
+}
+
+func ttlWithJitter(base time.Duration, sample uint64) time.Duration {
+	maxJitter := base / noteCacheJitterRatio
+	span := uint64(maxJitter*2) + 1
+	offset := time.Duration(sample%span) - maxJitter
+	return base + offset
 }
 
 func (c *RedisNoteCache) Delete(ctx context.Context, id int64) error {
