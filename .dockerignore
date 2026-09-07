@@ -4,8 +4,5 @@ logs
 **/__pycache__
 **/*.pyc
 
-rag_service/.venv
-rag_service/.cache
-
 .env
 .env.*

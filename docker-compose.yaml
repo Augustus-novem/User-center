@@ -40,34 +40,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
-  qdrant:
-    image: qdrant/qdrant:latest
-    restart: always
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-
-  rag-service:
-    build:
-      context: .
-      dockerfile: rag_service/Dockerfile
-    restart: always
-    environment:
-      RAG_SERVICE_CONFIG: /app/config/docker.yaml
-      LLM_ENABLED: ${LLM_ENABLED:-false}
-      LLM_BASE_URL: ${LLM_BASE_URL:-}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-}
-    volumes:
-      - ./rag_service/knowledge_base:/app/knowledge_base
-      - ./rag_service/config/docker.yaml:/app/config/docker.yaml:ro
-      - rag_model_cache:/app/.cache/fastembed
-    depends_on:
-      - qdrant
-    ports:
-      - "18081:18081"
-
   user-center:
     build:
       context: .
@@ -84,7 +56,6 @@ services:
       - mysql8
       - redis
       - kafka
-      - rag-service
     ports:
       - "8081:8081"
 
@@ -115,5 +86,3 @@ services:
 
 volumes:
   mysql_data:
-  qdrant_storage:
-  rag_model_cache:
