@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 	"user-center/internal/domain"
 	"user-center/internal/repository/cache"
 	"user-center/internal/repository/dao"
@@ -117,6 +120,66 @@ func TestCachedNoteRepository_FindByIDNotFoundWritesNegativeEntry(t *testing.T) 
 	_, err := repo.FindByID(context.Background(), 404)
 	if !errors.Is(err, ErrNoteNotFound) || negativeID != 404 {
 		t.Fatalf("err=%v negativeID=%d", err, negativeID)
+	}
+}
+
+func TestCachedNoteRepository_CoalescesConcurrentMisses(t *testing.T) {
+	const callers = 64
+	var originCalls atomic.Int64
+	var mu sync.RWMutex
+	var stored *domain.Note
+	cacheMiss := errors.New("cache miss")
+	noteCache := &noteCacheStub{
+		getFn: func(ctx context.Context, id int64) (domain.Note, error) {
+			mu.RLock()
+			defer mu.RUnlock()
+			if stored == nil {
+				return domain.Note{}, cacheMiss
+			}
+			return *stored, nil
+		},
+		setFn: func(ctx context.Context, note domain.Note) error {
+			mu.Lock()
+			defer mu.Unlock()
+			copyOfNote := note
+			stored = &copyOfNote
+			return nil
+		},
+	}
+	repo := NewCachedNoteRepository(NewNoteRepositoryImpl(&noteDAOStub{
+		findByIDFn: func(ctx context.Context, id int64) (dao.NoteOfDB, error) {
+			originCalls.Add(1)
+			time.Sleep(20 * time.Millisecond)
+			return dao.NoteOfDB{Id: id, Status: domain.NoteStatusPublished}, nil
+		},
+	}), noteCache, logger.NewNoOpLogger())
+
+	start := make(chan struct{})
+	errCh := make(chan error, callers)
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			<-start
+			note, err := repo.FindByID(context.Background(), 21)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if note.ID != 21 {
+				errCh <- errors.New("unexpected note ID")
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+	if got := originCalls.Load(); got != 1 {
+		t.Fatalf("want one origin call, got %d", got)
 	}
 }
 
