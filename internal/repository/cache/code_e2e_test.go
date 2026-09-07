@@ -4,6 +4,7 @@ package cache
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 	"user-center/internal/config"
@@ -13,10 +14,15 @@ import (
 
 func newTestRedis(t *testing.T) *redis.Client {
 	t.Helper()
+	mgr, err := config.NewManager(filepath.Join("..", "..", "..", "config", "dev.yaml"))
+	if err != nil {
+		t.Fatalf("load test config: %v", err)
+	}
+	cfg := mgr.App()
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     config.Config.Redis.Addr,
-		Password: config.Config.Redis.Password,
-		DB:       config.Config.Redis.DB,
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
 	})
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		t.Skipf("redis not available: %v", err)
