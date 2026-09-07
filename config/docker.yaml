@@ -98,3 +98,13 @@ hot_rank:
   publish_weight: 10
   like_weight: 3
   comment_weight: 5
+
+search:
+  enabled: true
+  address: http://elasticsearch:9200
+  index: community_notes
+  request_timeout: 800ms
+  db_fallback_timeout: 300ms
+  fallback_window: 720h
+  max_limit: 20
+  reindex_batch_size: 200

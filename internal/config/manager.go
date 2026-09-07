@@ -141,6 +141,9 @@ func warnStaticChange(logger *zap.Logger, oldCfg, newCfg AppConfig) {
 	if !reflect.DeepEqual(oldCfg.HotRank, newCfg.HotRank) {
 		warnings = append(warnings, "hot_rank")
 	}
+	if !reflect.DeepEqual(oldCfg.Search, newCfg.Search) {
+		warnings = append(warnings, "search")
+	}
 	if len(warnings) > 0 {
 		logger.Warn("检测到静态配置变更；当前进程不会热更新这些模块，需重启后生效", zap.Strings("keys", warnings))
 	}
@@ -196,6 +199,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("hot_rank.publish_weight", 10)
 	v.SetDefault("hot_rank.like_weight", 3)
 	v.SetDefault("hot_rank.comment_weight", 5)
+	v.SetDefault("search.enabled", false)
+	v.SetDefault("search.address", "http://localhost:9200")
+	v.SetDefault("search.index", "community_notes")
+	v.SetDefault("search.request_timeout", "800ms")
+	v.SetDefault("search.db_fallback_timeout", "300ms")
+	v.SetDefault("search.fallback_window", "720h")
+	v.SetDefault("search.max_limit", 20)
+	v.SetDefault("search.reindex_batch_size", 200)
 }
 
 func bindEnvs(v *viper.Viper) {
@@ -206,6 +217,8 @@ func bindEnvs(v *viper.Viper) {
 	mustBindEnv(v, "kafka.enabled", "KAFKA_ENABLED")
 	mustBindEnv(v, "kafka.client_id", "KAFKA_CLIENT_ID")
 	mustBindEnv(v, "kafka.consumer_group", "KAFKA_CLIENT_GROUP")
+	mustBindEnv(v, "search.address", "ELASTICSEARCH_ADDRESS")
+	mustBindEnv(v, "search.index", "ELASTICSEARCH_INDEX")
 	mustBindEnv(v, "jwt.access_token_key", "JWT_ACCESS_TOKEN_KEY")
 	mustBindEnv(v, "jwt.refresh_token_key", "JWT_REFRESH_TOKEN_KEY")
 	mustBindEnv(v, "wechat.app_id", "WECHAT_APP_ID")
@@ -284,6 +297,21 @@ func validate(cfg AppConfig) error {
 	}
 	if cfg.HotRank.PublishWeight <= 0 || cfg.HotRank.LikeWeight <= 0 || cfg.HotRank.CommentWeight <= 0 {
 		return fmt.Errorf("hot_rank event weights 必须大于 0")
+	}
+	if cfg.Search.Address == "" {
+		return fmt.Errorf("search.address 不能为空")
+	}
+	if cfg.Search.Index == "" {
+		return fmt.Errorf("search.index 不能为空")
+	}
+	if cfg.Search.RequestTimeout <= 0 || cfg.Search.DBFallbackTimeout <= 0 {
+		return fmt.Errorf("search timeout 必须大于 0")
+	}
+	if cfg.Search.FallbackWindow <= 0 {
+		return fmt.Errorf("search.fallback_window 必须大于 0")
+	}
+	if cfg.Search.MaxLimit <= 0 || cfg.Search.ReindexBatchSize <= 0 {
+		return fmt.Errorf("search limit 和 reindex_batch_size 必须大于 0")
 	}
 	if cfg.JWT.AccessTokenTTL <= 0 {
 		return fmt.Errorf("jwt.access_token_ttl 必须大于 0")

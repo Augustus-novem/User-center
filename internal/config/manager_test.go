@@ -134,6 +134,9 @@ wechat:
 	if cfg.HotRank.PublishWeight != 10 || cfg.HotRank.LikeWeight != 3 || cfg.HotRank.CommentWeight != 5 {
 		t.Fatalf("unexpected hot rank weights: %+v", cfg.HotRank)
 	}
+	if cfg.Search.Address != "http://localhost:9200" || cfg.Search.Index != "community_notes" || cfg.Search.RequestTimeout != 800*time.Millisecond {
+		t.Fatalf("unexpected search defaults: %+v", cfg.Search)
+	}
 }
 
 func TestValidate(t *testing.T) {
@@ -167,6 +170,15 @@ func TestValidate(t *testing.T) {
 			PublishWeight: 10,
 			LikeWeight:    3,
 			CommentWeight: 5,
+		},
+		Search: SearchConfig{
+			Address:           "http://localhost:9200",
+			Index:             "community_notes",
+			RequestTimeout:    800 * time.Millisecond,
+			DBFallbackTimeout: 300 * time.Millisecond,
+			FallbackWindow:    30 * 24 * time.Hour,
+			MaxLimit:          20,
+			ReindexBatchSize:  200,
 		},
 	}
 
@@ -202,6 +214,13 @@ func TestValidate(t *testing.T) {
 				cfg.HotRank.WindowMinutes = 0
 			},
 			wantErr: "hot_rank.window_minutes 必须大于 0",
+		},
+		{
+			name: "invalid search fallback timeout",
+			mutate: func(cfg *AppConfig) {
+				cfg.Search.DBFallbackTimeout = 0
+			},
+			wantErr: "search timeout 必须大于 0",
 		},
 	}
 

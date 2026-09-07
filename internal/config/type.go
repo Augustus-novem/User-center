@@ -22,6 +22,7 @@ type AppConfig struct {
 	Feature   FeatureConfig   `mapstructure:"feature"`
 	Feed      FeedConfig      `mapstructure:"feed"`
 	HotRank   HotRankConfig   `mapstructure:"hot_rank"`
+	Search    SearchConfig    `mapstructure:"search"`
 }
 
 func (conf AppConfig) Addr() string {
@@ -126,6 +127,17 @@ type HotRankConfig struct {
 	PublishWeight int64         `mapstructure:"publish_weight"`
 	LikeWeight    int64         `mapstructure:"like_weight"`
 	CommentWeight int64         `mapstructure:"comment_weight"`
+}
+
+type SearchConfig struct {
+	Enabled           bool          `mapstructure:"enabled"`
+	Address           string        `mapstructure:"address"`
+	Index             string        `mapstructure:"index"`
+	RequestTimeout    time.Duration `mapstructure:"request_timeout"`
+	DBFallbackTimeout time.Duration `mapstructure:"db_fallback_timeout"`
+	FallbackWindow    time.Duration `mapstructure:"fallback_window"`
+	MaxLimit          int           `mapstructure:"max_limit"`
+	ReindexBatchSize  int           `mapstructure:"reindex_batch_size"`
 }
 
 func (c FeedConfig) FanoutBatch() int {

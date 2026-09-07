@@ -98,3 +98,13 @@ hot_rank:
   publish_weight: 10
   like_weight: 3
   comment_weight: 5
+
+search:
+  enabled: false
+  address: http://localhost:9200
+  index: community_notes_test
+  request_timeout: 100ms
+  db_fallback_timeout: 100ms
+  fallback_window: 24h
+  max_limit: 10
+  reindex_batch_size: 50
