@@ -71,14 +71,20 @@ func (c *RedisHotRankCache) SnapshotPage(ctx context.Context, snapshot time.Time
 
 type RedisHotRankCache struct {
 	cmd         redis.Cmdable
+	prefix      string
 	window      time.Duration
 	snapshotTTL time.Duration
 	dedupTTL    time.Duration
 }
 
 func NewRedisHotRankCache(cmd redis.Cmdable, window, snapshotTTL, dedupTTL time.Duration) *RedisHotRankCache {
+	return newRedisHotRankCache(cmd, window, snapshotTTL, dedupTTL, "hot")
+}
+
+func newRedisHotRankCache(cmd redis.Cmdable, window, snapshotTTL, dedupTTL time.Duration, prefix string) *RedisHotRankCache {
 	return &RedisHotRankCache{
 		cmd:         cmd,
+		prefix:      prefix,
 		window:      window,
 		snapshotTTL: snapshotTTL,
 		dedupTTL:    dedupTTL,
@@ -102,18 +108,18 @@ func (c *RedisHotRankCache) Record(ctx context.Context, eventID string, noteID i
 }
 
 func (c *RedisHotRankCache) bucketKey(minute time.Time) string {
-	return fmt.Sprintf("hot:note:%04d%02d%02d%02d%02d",
+	return fmt.Sprintf("%s:note:%04d%02d%02d%02d%02d", c.prefix,
 		minute.Year(), minute.Month(), minute.Day(), minute.Hour(), minute.Minute())
 }
 
 func (c *RedisHotRankCache) eventKey(eventID string) string {
-	return "hot:event:done:" + eventID
+	return c.prefix + ":event:done:" + eventID
 }
 
 func (c *RedisHotRankCache) snapshotKey(minute time.Time) string {
-	return fmt.Sprintf("hot:note:snapshot:%d", minute.Unix()/60)
+	return fmt.Sprintf("%s:note:snapshot:%d", c.prefix, minute.Unix()/60)
 }
 
 func (c *RedisHotRankCache) snapshotReadyKey(minute time.Time) string {
-	return fmt.Sprintf("hot:note:snapshot:ready:%d", minute.Unix()/60)
+	return fmt.Sprintf("%s:note:snapshot:ready:%d", c.prefix, minute.Unix()/60)
 }
