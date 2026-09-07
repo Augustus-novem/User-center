@@ -73,6 +73,9 @@ func (s *NoteServiceImpl) Publish(ctx context.Context, authorID int64, title, co
 		)
 		return domain.Note{}, err
 	}
+	if invalidator, ok := s.notes.(repository.NoteCacheInvalidator); ok {
+		invalidator.Invalidate(ctx, created.ID)
+	}
 	return created, nil
 }
 

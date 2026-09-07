@@ -21,6 +21,12 @@ type NoteRepository interface {
 	SoftDelete(ctx context.Context, id, authorID int64) error
 }
 
+// NoteCacheInvalidator is implemented by cache-decorated note repositories.
+// It lets the service invalidate a newly allocated ID only after its transaction commits.
+type NoteCacheInvalidator interface {
+	Invalidate(ctx context.Context, id int64)
+}
+
 type NoteRepositoryImpl struct {
 	dao dao.NoteDAO
 }

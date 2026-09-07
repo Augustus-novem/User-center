@@ -39,7 +39,6 @@ func (r *CachedNoteRepository) Create(ctx context.Context, note domain.Note) (do
 	if err != nil {
 		return domain.Note{}, err
 	}
-	r.invalidate(ctx, created.ID)
 	return created, nil
 }
 
@@ -126,11 +125,11 @@ func (r *CachedNoteRepository) SoftDelete(ctx context.Context, id, authorID int6
 	if err := r.inner.SoftDelete(ctx, id, authorID); err != nil {
 		return err
 	}
-	r.invalidate(ctx, id)
+	r.Invalidate(ctx, id)
 	return nil
 }
 
-func (r *CachedNoteRepository) invalidate(ctx context.Context, id int64) {
+func (r *CachedNoteRepository) Invalidate(ctx context.Context, id int64) {
 	r.local.Delete(id)
 	if err := r.cache.Delete(ctx, id); err != nil {
 		r.logger.Warn("invalidate note cache failed", logger.Error(err))

@@ -247,7 +247,7 @@ func TestCachedNoteRepository_DeleteInvalidatesLocalCache(t *testing.T) {
 	}
 }
 
-func TestCachedNoteRepository_CreateAndDeleteInvalidate(t *testing.T) {
+func TestCachedNoteRepository_DeleteAndExplicitInvalidate(t *testing.T) {
 	t.Parallel()
 	var invalidated []int64
 	repo := newCachedNoteRepositoryForTest(NewNoteRepositoryImpl(&noteDAOStub{
@@ -272,6 +272,7 @@ func TestCachedNoteRepository_CreateAndDeleteInvalidate(t *testing.T) {
 	if err = repo.SoftDelete(context.Background(), created.ID, 2); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
+	repo.Invalidate(context.Background(), created.ID)
 	if len(invalidated) != 2 || invalidated[0] != 6 || invalidated[1] != 6 {
 		t.Fatalf("invalidated=%v", invalidated)
 	}

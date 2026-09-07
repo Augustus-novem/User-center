@@ -20,6 +20,15 @@ type noteRepoStub struct {
 	softDeleteFn          func(ctx context.Context, id, authorID int64) error
 }
 
+type invalidatingNoteRepoStub struct {
+	*noteRepoStub
+	invalidateFn func(ctx context.Context, id int64)
+}
+
+func (s *invalidatingNoteRepoStub) Invalidate(ctx context.Context, id int64) {
+	s.invalidateFn(ctx, id)
+}
+
 func (s *noteRepoStub) Create(ctx context.Context, note domain.Note) (domain.Note, error) {
 	if s.createFn == nil {
 		note.ID = 1
@@ -121,6 +130,41 @@ func TestNoteService_Publish(t *testing.T) {
 		}
 		if store.len() != 0 {
 			t.Fatalf("note should roll back, got %d", store.len())
+		}
+	})
+
+	t.Run("invalidates allocated ID after transaction commit", func(t *testing.T) {
+		t.Parallel()
+		insideTx := false
+		invalidated := false
+		repo := &invalidatingNoteRepoStub{
+			noteRepoStub: &noteRepoStub{createFn: func(ctx context.Context, note domain.Note) (domain.Note, error) {
+				note.ID = 43
+				return note, nil
+			}},
+			invalidateFn: func(ctx context.Context, id int64) {
+				if insideTx {
+					t.Fatal("cache invalidation must run after transaction commit")
+				}
+				if id != 43 {
+					t.Fatalf("unexpected note ID %d", id)
+				}
+				invalidated = true
+			},
+		}
+		tx := &txStub{inTxFn: func(ctx context.Context, fn func(context.Context) error) error {
+			insideTx = true
+			err := fn(ctx)
+			insideTx = false
+			return err
+		}}
+		svc := NewNoteServiceImpl(repo, tx, events.NopPublisher{}, logger.NewNoOpLogger())
+
+		if _, err := svc.Publish(context.Background(), 9, "hello", "body", nil); err != nil {
+			t.Fatalf("publish: %v", err)
+		}
+		if !invalidated {
+			t.Fatal("expected post-commit cache invalidation")
 		}
 	})
 
