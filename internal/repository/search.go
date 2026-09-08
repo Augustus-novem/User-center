@@ -12,6 +12,10 @@ type NoteSearchIndex interface {
 	Index(ctx context.Context, note domain.Note) error
 	Delete(ctx context.Context, noteID int64) error
 	Search(ctx context.Context, query string, limit int) ([]domain.Note, error)
+	BeginRebuild(ctx context.Context) (physicalIndex string, err error)
+	IndexInto(ctx context.Context, physicalIndex string, note domain.Note) error
+	CommitRebuild(ctx context.Context, physicalIndex string) error
+	AbortRebuild(ctx context.Context, physicalIndex string) error
 }
 
 type NoteRebuildSource interface {

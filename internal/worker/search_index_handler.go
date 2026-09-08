@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"user-center/internal/events"
 	"user-center/pkg/logger"
 
@@ -27,9 +26,9 @@ func NewSearchIndexHandler(indexer SearchEventIndexer, l logger.Logger) *SearchI
 func (h *SearchIndexHandler) HandlePublished(ctx context.Context, msg *sarama.ConsumerMessage) error {
 	var evt events.NotePublishedEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal note published event: %w", err)
+		return Permanentf("unmarshal note published event: %w", err)
 	}
-	if evt.EventID == "" || evt.NoteID <= 0 {
+	if evt.EventID == "" || evt.Type != events.TopicNotePublished || evt.NoteID <= 0 || evt.AuthorID <= 0 || evt.OccurredAt <= 0 {
 		return invalidSearchEvent(events.TopicNotePublished)
 	}
 	if err := h.indexer.IndexPublished(ctx, evt.NoteID); err != nil {
@@ -45,9 +44,9 @@ func (h *SearchIndexHandler) HandlePublished(ctx context.Context, msg *sarama.Co
 func (h *SearchIndexHandler) HandleDeleted(ctx context.Context, msg *sarama.ConsumerMessage) error {
 	var evt events.NoteDeletedEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal note deleted event: %w", err)
+		return Permanentf("unmarshal note deleted event: %w", err)
 	}
-	if evt.EventID == "" || evt.NoteID <= 0 {
+	if evt.EventID == "" || evt.Type != events.TopicNoteDeleted || evt.NoteID <= 0 || evt.AuthorID <= 0 || evt.OccurredAt <= 0 {
 		return invalidSearchEvent(events.TopicNoteDeleted)
 	}
 	if err := h.indexer.Delete(ctx, evt.NoteID); err != nil {
@@ -61,5 +60,5 @@ func (h *SearchIndexHandler) HandleDeleted(ctx context.Context, msg *sarama.Cons
 }
 
 func invalidSearchEvent(topic string) error {
-	return fmt.Errorf("invalid %s event", topic)
+	return Permanentf("invalid %s event", topic)
 }

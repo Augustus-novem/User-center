@@ -47,6 +47,17 @@ func InitKafkaConsumerGroup(cfg *config.AppConfig) sarama.ConsumerGroup {
 	return consumer
 }
 
+func InitKafkaSyncProducer(cfg *config.AppConfig) sarama.SyncProducer {
+	if !cfg.Kafka.Enabled {
+		panic("kafka is disabled")
+	}
+	producer, err := sarama.NewSyncProducer(cfg.Kafka.Brokers, newSaramaConfig(cfg.Kafka))
+	if err != nil {
+		panic(err)
+	}
+	return producer
+}
+
 func EnsureKafkaTopics(cfg *config.AppConfig, l logger.Logger) error {
 	if !cfg.Kafka.Enabled {
 		return nil

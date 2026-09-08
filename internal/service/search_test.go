@@ -16,6 +16,12 @@ type searchQueryIndexStub struct {
 func (*searchQueryIndexStub) EnsureIndex(context.Context) error        { return nil }
 func (*searchQueryIndexStub) Index(context.Context, domain.Note) error { return nil }
 func (*searchQueryIndexStub) Delete(context.Context, int64) error      { return nil }
+func (*searchQueryIndexStub) BeginRebuild(context.Context) (string, error) {
+	return "test-rebuild", nil
+}
+func (*searchQueryIndexStub) IndexInto(context.Context, string, domain.Note) error { return nil }
+func (*searchQueryIndexStub) CommitRebuild(context.Context, string) error          { return nil }
+func (*searchQueryIndexStub) AbortRebuild(context.Context, string) error           { return nil }
 func (s *searchQueryIndexStub) Search(ctx context.Context, q string, limit int) ([]domain.Note, error) {
 	return s.searchFn(ctx, q, limit)
 }

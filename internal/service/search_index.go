@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"user-center/internal/repository"
 )
+
+const searchRebuildCleanupTimeout = 5 * time.Second
 
 type SearchIndexService struct {
 	notes     repository.NoteRepository
@@ -33,14 +36,24 @@ func (s *SearchIndexService) Delete(ctx context.Context, noteID int64) error {
 	return s.index.Delete(ctx, noteID)
 }
 
-func (s *SearchIndexService) Rebuild(ctx context.Context) (int, error) {
+func (s *SearchIndexService) Rebuild(ctx context.Context) (indexed int, err error) {
 	if s.rebuild == nil || s.batchSize <= 0 {
 		return 0, errors.New("search rebuild source or batch size is invalid")
 	}
-	if err := s.index.EnsureIndex(ctx); err != nil {
+	physicalIndex, err := s.index.BeginRebuild(ctx)
+	if err != nil {
 		return 0, err
 	}
-	indexed := 0
+	committed := false
+	defer func() {
+		if !committed {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), searchRebuildCleanupTimeout)
+			defer cancel()
+			if cleanupErr := s.index.AbortRebuild(cleanupCtx, physicalIndex); cleanupErr != nil {
+				err = errors.Join(err, fmt.Errorf("delete temporary search index %s: %w", physicalIndex, cleanupErr))
+			}
+		}
+	}()
 	var afterID int64
 	for {
 		notes, err := s.rebuild.ListPublishedAfterID(ctx, afterID, s.batchSize)
@@ -48,17 +61,22 @@ func (s *SearchIndexService) Rebuild(ctx context.Context) (int, error) {
 			return indexed, fmt.Errorf("load search rebuild batch after note %d: %w", afterID, err)
 		}
 		if len(notes) == 0 {
-			return indexed, nil
+			break
 		}
 		for _, note := range notes {
-			if err = s.index.Index(ctx, note); err != nil {
+			if err = s.index.IndexInto(ctx, physicalIndex, note); err != nil {
 				return indexed, fmt.Errorf("index note %d: %w", note.ID, err)
 			}
 			indexed++
 			afterID = note.ID
 		}
 		if len(notes) < s.batchSize {
-			return indexed, nil
+			break
 		}
 	}
+	if err = s.index.CommitRebuild(ctx, physicalIndex); err != nil {
+		return indexed, fmt.Errorf("commit search rebuild: %w", err)
+	}
+	committed = true
+	return indexed, nil
 }

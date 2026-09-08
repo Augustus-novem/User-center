@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"user-center/internal/events"
 	"user-center/pkg/logger"
 
@@ -25,7 +24,10 @@ func NewUserActivityHandler(processor UserActivityProcessor, l logger.Logger) *U
 func (h *UserActivityHandler) Handle(ctx context.Context, msg *sarama.ConsumerMessage) error {
 	var evt events.UserActivityEvent
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal user activity event: %w", err)
+		return Permanentf("unmarshal user activity event: %w", err)
+	}
+	if evt.EventID == "" || evt.Type != events.TopicUserActivity || evt.UserID <= 0 || evt.Action == "" || evt.BizID == "" || evt.OccurredAt <= 0 {
+		return Permanentf("invalid %s event", events.TopicUserActivity)
 	}
 	processed, err := h.processor.ProcessOnce(ctx, evt)
 	if err != nil {

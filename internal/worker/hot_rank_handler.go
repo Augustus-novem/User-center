@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"user-center/internal/service"
 	"user-center/pkg/logger"
 
@@ -32,10 +31,13 @@ func NewHotRankHandler(recorder service.HotRankRecorder, l logger.Logger) *HotRa
 func (h *HotRankHandler) Handle(ctx context.Context, msg *sarama.ConsumerMessage) error {
 	var evt hotRankEventEnvelope
 	if err := json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal hot rank event: %w", err)
+		return Permanentf("unmarshal hot rank event: %w", err)
 	}
 	if evt.Type != msg.Topic {
-		return fmt.Errorf("hot rank event type %q does not match topic %q", evt.Type, msg.Topic)
+		return Permanentf("hot rank event type %q does not match topic %q", evt.Type, msg.Topic)
+	}
+	if evt.EventID == "" || evt.NoteID <= 0 || evt.OccurredAt <= 0 {
+		return Permanentf("invalid hot rank event for topic %q", msg.Topic)
 	}
 	applied, err := h.recorder.Record(ctx, evt.EventID, evt.Type, evt.NoteID, evt.OccurredAt)
 	if err != nil {

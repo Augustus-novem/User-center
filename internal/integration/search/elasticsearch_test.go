@@ -17,9 +17,8 @@ func TestElasticsearchIndexLifecycle(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.Path)
 		switch {
-		case r.Method == http.MethodPut && r.URL.Path == "/notes":
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":{"type":"resource_already_exists_exception"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/_alias/notes":
+			_, _ = w.Write([]byte(`{"notes-000001":{"aliases":{"notes":{}}}}`))
 		case r.Method == http.MethodPut && r.URL.Path == "/notes/_doc/42":
 			var body map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -53,6 +52,73 @@ func TestElasticsearchIndexLifecycle(t *testing.T) {
 	}
 	if len(requests) != 3 {
 		t.Fatalf("requests=%v", requests)
+	}
+}
+
+func TestElasticsearchRebuildAtomicallySwapsAliasAndDeletesOldIndex(t *testing.T) {
+	t.Parallel()
+	var physical string
+	var aliasActions map[string]any
+	oldDeleted := false
+	runtimeWrite := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/notes-rebuild-") && !strings.Contains(r.URL.Path, "/_doc/"):
+			physical = strings.TrimPrefix(r.URL.Path, "/")
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPut && r.URL.Path == "/"+physical+"/_doc/1":
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodGet && r.URL.Path == "/_alias/notes":
+			_, _ = w.Write([]byte(`{"notes-old":{"aliases":{"notes":{}}}}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/_aliases":
+			if err := json.NewDecoder(r.Body).Decode(&aliasActions); err != nil {
+				t.Errorf("decode alias actions: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodDelete && r.URL.Path == "/notes-old":
+			oldDeleted = true
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPut && r.URL.Path == "/notes/_doc/2":
+			runtimeWrite = true
+			w.WriteHeader(http.StatusCreated)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewElasticsearch(server.URL, "notes", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	physical, err = client.BeginRebuild(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = client.IndexInto(context.Background(), physical, domain.Note{ID: 1, Status: domain.NoteStatusPublished}); err != nil {
+		t.Fatal(err)
+	}
+	if err = client.CommitRebuild(context.Background(), physical); err != nil {
+		t.Fatal(err)
+	}
+	if aliasActions == nil || !oldDeleted {
+		t.Fatalf("aliasActions=%+v oldDeleted=%v", aliasActions, oldDeleted)
+	}
+	actionsJSON, err := json.Marshal(aliasActions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actionsText := string(actionsJSON)
+	if !strings.Contains(actionsText, `"remove":{"alias":"notes","index":"notes-old"}`) ||
+		!strings.Contains(actionsText, `"add":{"alias":"notes","index":"`+physical+`"}`) {
+		t.Fatalf("alias swap must atomically remove old and add new target: %s", actionsText)
+	}
+	if err = client.Index(context.Background(), domain.Note{ID: 2, Status: domain.NoteStatusPublished}); err != nil {
+		t.Fatal(err)
+	}
+	if !runtimeWrite {
+		t.Fatal("runtime write must continue targeting alias")
 	}
 }
 

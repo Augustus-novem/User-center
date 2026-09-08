@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"user-center/internal/events"
 	"user-center/pkg/logger"
@@ -71,6 +72,19 @@ func TestNotePublishedHandler_Handle(t *testing.T) {
 		}
 	})
 
+	t.Run("busy event returns explicit transient error", func(t *testing.T) {
+		t.Parallel()
+		fanout := &stubFanout{}
+		deduper := &stubDeduplicator{state: DeduplicationBusy}
+		h := NewNotePublishedHandler(fanout, deduper, logger.NewNoOpLogger())
+		if err := h.Handle(context.Background(), msg); !errors.Is(err, ErrMessageInFlight) {
+			t.Fatalf("want ErrMessageInFlight, got %v", err)
+		}
+		if fanout.calls != 0 || deduper.marks != 0 || deduper.clears != 0 {
+			t.Fatalf("BUSY must have no side effect: fanout=%d marks=%d clears=%d", fanout.calls, deduper.marks, deduper.clears)
+		}
+	})
+
 	t.Run("partial fanout failure clears in-flight", func(t *testing.T) {
 		t.Parallel()
 		fanout := &stubFanout{failNth: 1}
@@ -103,6 +117,45 @@ func TestNotePublishedHandler_Handle(t *testing.T) {
 		}
 		if deduper.marks != 1 {
 			t.Fatalf("retry must MarkDone once, marks=%d", deduper.marks)
+		}
+	})
+
+	t.Run("mark done failure is returned", func(t *testing.T) {
+		t.Parallel()
+		want := errors.New("redis mark failed")
+		deduper := &stubDeduplicator{markErr: want}
+		h := NewNotePublishedHandler(&stubFanout{}, deduper, logger.NewNoOpLogger())
+		if err := h.Handle(context.Background(), msg); !errors.Is(err, want) {
+			t.Fatalf("want mark error, got %v", err)
+		}
+		if deduper.marks != 1 {
+			t.Fatalf("marks=%d", deduper.marks)
+		}
+	})
+
+	t.Run("cleanup failure is returned and redelivery can retry", func(t *testing.T) {
+		t.Parallel()
+		fanout := &stubFanout{failNth: 1}
+		deduper := &stubDeduplicator{clearErr: errors.New("redis cleanup failed")}
+		h := NewNotePublishedHandler(fanout, deduper, logger.NewNoOpLogger())
+		firstErr := h.Handle(context.Background(), msg)
+		if firstErr == nil || !strings.Contains(firstErr.Error(), "cleanup failed lease") {
+			t.Fatalf("want joined cleanup error, got %v", firstErr)
+		}
+		deduper.clearErr = nil
+		deduper.state = DeduplicationBusy
+		if err := h.Handle(context.Background(), msg); !errors.Is(err, ErrMessageInFlight) {
+			t.Fatalf("redelivery before lease expiry should be BUSY, got %v", err)
+		}
+		if fanout.calls != 1 {
+			t.Fatalf("BUSY redelivery must not rerun business, calls=%d", fanout.calls)
+		}
+		deduper.state = DeduplicationAcquired
+		if err := h.Handle(context.Background(), msg); err != nil {
+			t.Fatalf("redelivery after lease expiry: %v", err)
+		}
+		if fanout.calls != 2 || deduper.marks != 1 {
+			t.Fatalf("fanout=%d marks=%d", fanout.calls, deduper.marks)
 		}
 	})
 }

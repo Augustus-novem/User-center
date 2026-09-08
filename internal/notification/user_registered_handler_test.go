@@ -6,6 +6,7 @@ import (
 	"testing"
 	"user-center/internal/events"
 	"user-center/internal/repository"
+	"user-center/internal/worker"
 	"user-center/pkg/logger"
 
 	"github.com/IBM/sarama"
@@ -29,18 +30,21 @@ type stubDeduplicator struct {
 	checks  int
 }
 
-func (s *stubDeduplicator) TryBegin(ctx context.Context, eventID string) (bool, error) {
+func (s *stubDeduplicator) TryBegin(ctx context.Context, eventID string) (worker.DeduplicationLease, error) {
 	s.checks++
-	return !s.started, nil
+	if s.started {
+		return worker.DeduplicationLease{State: worker.DeduplicationDone}, nil
+	}
+	return worker.DeduplicationLease{State: worker.DeduplicationAcquired, OwnerToken: "owner-token"}, nil
 }
 
-func (s *stubDeduplicator) MarkDone(ctx context.Context, eventID string) error {
+func (s *stubDeduplicator) MarkDone(ctx context.Context, eventID, ownerToken string) error {
 	s.marks++
 	s.started = true
 	return nil
 }
 
-func (s *stubDeduplicator) ClearInFlight(ctx context.Context, eventID string) error {
+func (s *stubDeduplicator) ClearInFlight(ctx context.Context, eventID, ownerToken string) error {
 	s.clears++
 	return nil
 }

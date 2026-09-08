@@ -45,6 +45,8 @@ func main() {
 	defer func() {
 		_ = group.Close()
 	}()
+	dlqProducer := ioc.InitKafkaSyncProducer(&cfg)
+	defer func() { _ = dlqProducer.Close() }()
 
 	pointRepo := repository.NewPointRepositoryImpl(dao.NewGORMPointDAO(db))
 	registeredDeduper := worker.NewRedisDeduplicator(rdb, "worker:user_registered")
@@ -70,7 +72,7 @@ func main() {
 	activityHandler := worker.NewUserActivityHandler(activityProcessor, appLogger)
 	notePublishedHandler := worker.NewNotePublishedHandler(feedSvc, notePublishedDeduper, appLogger)
 	hotRankHandler := worker.NewHotRankHandler(hotSvc, appLogger)
-	consumerHandler := worker.NewConsumerGroupHandler(appLogger, map[string]worker.MessageHandler{
+	consumerHandler := worker.NewConsumerGroupHandlerWithDLQ(appLogger, dlqProducer, map[string]worker.MessageHandler{
 		events.TopicUserRegistered: registeredHandler.Handle,
 		events.TopicUserActivity:   activityHandler.Handle,
 		events.TopicNotePublished:  worker.ChainHandlers(notePublishedHandler.Handle, hotRankHandler.Handle),

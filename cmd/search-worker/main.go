@@ -44,12 +44,14 @@ func main() {
 	}
 	indexer := service.NewSearchIndexService(notes, notes, index, cfg.Search.ReindexBatchSize)
 	handler := worker.NewSearchIndexHandler(indexer, appLogger)
-	consumerHandler := worker.NewConsumerGroupHandler(appLogger, map[string]worker.MessageHandler{
+	group := ioc.InitSearchKafkaConsumerGroup(&cfg)
+	defer func() { _ = group.Close() }()
+	dlqProducer := ioc.InitKafkaSyncProducer(&cfg)
+	defer func() { _ = dlqProducer.Close() }()
+	consumerHandler := worker.NewConsumerGroupHandlerWithDLQ(appLogger, dlqProducer, map[string]worker.MessageHandler{
 		events.TopicNotePublished: handler.HandlePublished,
 		events.TopicNoteDeleted:   handler.HandleDeleted,
 	})
-	group := ioc.InitSearchKafkaConsumerGroup(&cfg)
-	defer func() { _ = group.Close() }()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

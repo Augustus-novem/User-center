@@ -29,26 +29,38 @@ func (s *stubPointRepository) AddWelcomePoints(ctx context.Context, userID int64
 }
 
 type stubDeduplicator struct {
-	started bool
-	marks   int
-	clears  int
-	checks  int
+	started  bool
+	state    DeduplicationState
+	marks    int
+	clears   int
+	checks   int
+	markErr  error
+	clearErr error
 }
 
-func (s *stubDeduplicator) TryBegin(ctx context.Context, eventID string) (bool, error) {
+func (s *stubDeduplicator) TryBegin(ctx context.Context, eventID string) (DeduplicationLease, error) {
 	s.checks++
-	return !s.started, nil
+	if s.state != "" {
+		return DeduplicationLease{State: s.state, OwnerToken: "owner-token"}, nil
+	}
+	if s.started {
+		return DeduplicationLease{State: DeduplicationDone}, nil
+	}
+	return DeduplicationLease{State: DeduplicationAcquired, OwnerToken: "owner-token"}, nil
 }
 
-func (s *stubDeduplicator) MarkDone(ctx context.Context, eventID string) error {
+func (s *stubDeduplicator) MarkDone(ctx context.Context, eventID, ownerToken string) error {
 	s.marks++
+	if s.markErr != nil {
+		return s.markErr
+	}
 	s.started = true
 	return nil
 }
 
-func (s *stubDeduplicator) ClearInFlight(ctx context.Context, eventID string) error {
+func (s *stubDeduplicator) ClearInFlight(ctx context.Context, eventID, ownerToken string) error {
 	s.clears++
-	return nil
+	return s.clearErr
 }
 
 func TestUserRegisteredHandler_Handle(t *testing.T) {

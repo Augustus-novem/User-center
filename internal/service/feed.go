@@ -10,9 +10,7 @@ import (
 )
 
 const (
-	maxFeedHydrateRounds    = 20
-	celebrityFollowPage     = 50
-	maxCelebrityFollowPages = 20
+	celebrityFollowPage = 50
 )
 
 type FeedService interface {
@@ -113,14 +111,10 @@ func (s *FeedServiceImpl) ListFollowing(ctx context.Context, userID int64, curso
 	if readBatch < 20 {
 		readBatch = 20
 	}
-	celebNotes, err := s.celebrityNotes(ctx, userID, exclusiveMax, need)
-	if err != nil {
-		return domain.NotePage{}, err
-	}
-	items := make([]domain.Note, 0, need)
-	seen := make(map[int64]struct{}, need)
+	pushCandidates := make([]domain.Note, 0, need)
+	seenPush := make(map[int64]struct{}, need)
 	inboxMax := exclusiveMax
-	for round := 0; round < maxFeedHydrateRounds && len(items) < need; round++ {
+	for len(pushCandidates) < need {
 		ids, err := s.inbox.List(ctx, userID, inboxMax, readBatch)
 		if err != nil {
 			return domain.NotePage{}, err
@@ -129,17 +123,13 @@ func (s *FeedServiceImpl) ListFollowing(ctx context.Context, userID int64, curso
 		if err != nil {
 			return domain.NotePage{}, err
 		}
-		merged := mergeNotesByIDDesc(hydrated, celebNotes)
-		for _, note := range merged {
-			if exclusiveMax > 0 && note.ID >= exclusiveMax {
+		for _, note := range hydrated {
+			if _, ok := seenPush[note.ID]; ok {
 				continue
 			}
-			if _, ok := seen[note.ID]; ok {
-				continue
-			}
-			seen[note.ID] = struct{}{}
-			items = append(items, note)
-			if len(items) == need {
+			seenPush[note.ID] = struct{}{}
+			pushCandidates = append(pushCandidates, note)
+			if len(pushCandidates) == need {
 				break
 			}
 		}
@@ -150,6 +140,14 @@ func (s *FeedServiceImpl) ListFollowing(ctx context.Context, userID int64, curso
 		if len(ids) < readBatch {
 			break
 		}
+	}
+	celebNotes, err := s.celebrityNotes(ctx, userID, exclusiveMax, need)
+	if err != nil {
+		return domain.NotePage{}, err
+	}
+	items := mergeNotesByIDDesc(pushCandidates, celebNotes)
+	if len(items) > need {
+		items = items[:need]
 	}
 	page := domain.NotePage{Items: items}
 	if len(items) > limit {
@@ -202,7 +200,7 @@ func (s *FeedServiceImpl) celebrityNotes(ctx context.Context, userID, exclusiveM
 	}
 	var cursor *domain.FollowCursor
 	out := make([]domain.Note, 0)
-	for round := 0; round < maxCelebrityFollowPages; round++ {
+	for {
 		rels, err := s.follows.ListFollowing(ctx, userID, cursor, celebrityFollowPage)
 		if err != nil {
 			return nil, err

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"user-center/internal/domain"
+	"user-center/internal/repository"
 	"user-center/pkg/logger"
 )
 
@@ -533,6 +534,96 @@ func TestFeedService_HybridFanoutAndMerge(t *testing.T) {
 		page2, err := svc.ListFollowing(context.Background(), 1, page1.NextCursor, 1)
 		if err != nil || page2.Items[0].ID != 3 {
 			t.Fatalf("page2 should continue older merge, got %+v err=%v", page2, err)
+		}
+	})
+
+	t.Run("stale first inbox batch cannot hide later valid push notes", func(t *testing.T) {
+		t.Parallel()
+		inbox := newMemFeedInbox()
+		for id := int64(220); id >= 200; id-- {
+			_ = inbox.AddToUsers(context.Background(), []int64{1}, id)
+		}
+		notes := &noteRepoStub{
+			findByIDFn: func(ctx context.Context, id int64) (domain.Note, error) {
+				if id == 200 {
+					return published(200, 8), nil
+				}
+				return domain.Note{}, repository.ErrNoteDeleted
+			},
+			listPublishedBeforeFn: func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+				return []domain.Note{published(100, 9), published(99, 9)}, nil
+			},
+		}
+		follows := &followRepoStub{
+			listFollowingFn: func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				if cursor != nil {
+					return nil, nil
+				}
+				return []domain.UserRelation{{ID: 1, FollowerID: 1, FolloweeID: 9}}, nil
+			},
+			filterIDsByMinFollowersFn: func(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+				return []int64{9}, nil
+			},
+		}
+		svc := newHybridFeedService(inbox, notes, follows, 10, 3)
+		page, err := svc.ListFollowing(context.Background(), 1, "", 1)
+		if err != nil || len(page.Items) != 1 || page.Items[0].ID != 200 {
+			t.Fatalf("later valid inbox note must win merge, page=%+v err=%v", page, err)
+		}
+	})
+
+	t.Run("celebrity scan continues beyond one thousand follows", func(t *testing.T) {
+		t.Parallel()
+		relations := make([]domain.UserRelation, 0, 1001)
+		for id := int64(1001); id >= 1; id-- {
+			followeeID := id
+			if id == 1 {
+				followeeID = 5001
+			}
+			relations = append(relations, domain.UserRelation{ID: id, FollowerID: 1, FolloweeID: followeeID, CreatedAt: id})
+		}
+		pageCalls := 0
+		follows := &followRepoStub{
+			listFollowingFn: func(ctx context.Context, followerID int64, cursor *domain.FollowCursor, limit int) ([]domain.UserRelation, error) {
+				pageCalls++
+				start := 0
+				if cursor != nil {
+					start = len(relations)
+					for i, rel := range relations {
+						if rel.CreatedAt < cursor.CreatedAt || (rel.CreatedAt == cursor.CreatedAt && rel.ID < cursor.ID) {
+							start = i
+							break
+						}
+					}
+				}
+				end := start + limit
+				if end > len(relations) {
+					end = len(relations)
+				}
+				return relations[start:end], nil
+			},
+			filterIDsByMinFollowersFn: func(ctx context.Context, followeeIDs []int64, minFollowers int) ([]int64, error) {
+				for _, id := range followeeIDs {
+					if id == 5001 {
+						return []int64{5001}, nil
+					}
+				}
+				return nil, nil
+			},
+		}
+		notes := &noteRepoStub{listPublishedBeforeFn: func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]domain.Note, error) {
+			if authorID == 5001 {
+				return []domain.Note{published(77, authorID)}, nil
+			}
+			return nil, nil
+		}}
+		svc := newHybridFeedService(newMemFeedInbox(), notes, follows, 10, 3)
+		page, err := svc.ListFollowing(context.Background(), 1, "", 10)
+		if err != nil || len(page.Items) != 1 || page.Items[0].ID != 77 {
+			t.Fatalf("page=%+v err=%v", page, err)
+		}
+		if pageCalls <= 20 {
+			t.Fatalf("expected scan beyond 1000 follows, calls=%d", pageCalls)
 		}
 	})
 }

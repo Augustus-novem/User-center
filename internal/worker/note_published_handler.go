@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"user-center/internal/events"
 	"user-center/pkg/logger"
 
@@ -36,30 +35,24 @@ func NewNotePublishedHandler(fanout PublishedNoteFanout, deduper Deduplicator, l
 func (h *NotePublishedHandler) Handle(ctx context.Context, msg *sarama.ConsumerMessage) (err error) {
 	var evt events.NotePublishedEvent
 	if err = json.Unmarshal(msg.Value, &evt); err != nil {
-		return fmt.Errorf("unmarshal note published event: %w", err)
+		return Permanentf("unmarshal note published event: %w", err)
 	}
-	started, err := h.deduper.TryBegin(ctx, evt.EventID)
+	if evt.EventID == "" || evt.Type != events.TopicNotePublished || evt.NoteID <= 0 || evt.AuthorID <= 0 || evt.OccurredAt <= 0 {
+		return Permanentf("invalid %s event", events.TopicNotePublished)
+	}
+	state, err := RunDeduplicated(ctx, h.deduper, evt.EventID, func(workCtx context.Context) error {
+		return h.fanout.FanoutPublished(workCtx, evt.NoteID, evt.AuthorID)
+	})
 	if err != nil {
 		return err
 	}
-	if !started {
-		h.logger.Info("note.published 重复消费或正在处理中，已跳过扇出",
+	if state == DeduplicationDone {
+		h.logger.Info("note.published 已完成，跳过重复扇出",
 			logger.Field{Key: "event_id", Value: evt.EventID},
 			logger.Field{Key: "note_id", Value: evt.NoteID},
 			logger.Field{Key: "user_id", Value: evt.AuthorID},
 		)
 		return nil
-	}
-	defer func() {
-		if err != nil {
-			_ = h.deduper.ClearInFlight(ctx, evt.EventID)
-		}
-	}()
-	if err = h.fanout.FanoutPublished(ctx, evt.NoteID, evt.AuthorID); err != nil {
-		return err
-	}
-	if err = h.deduper.MarkDone(ctx, evt.EventID); err != nil {
-		return err
 	}
 	h.logger.Info("note.published 扇出完成",
 		logger.Field{Key: "event_id", Value: evt.EventID},

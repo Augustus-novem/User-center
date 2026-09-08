@@ -32,6 +32,16 @@ type consumerClaimStub struct {
 	messages <-chan *sarama.ConsumerMessage
 }
 
+type deadLetterPublisherStub struct {
+	message *sarama.ProducerMessage
+	err     error
+}
+
+func (s *deadLetterPublisherStub) SendMessage(msg *sarama.ProducerMessage) (int32, int64, error) {
+	s.message = msg
+	return 0, 0, s.err
+}
+
 func (*consumerClaimStub) Topic() string                              { return events.TopicNotePublished }
 func (*consumerClaimStub) Partition() int32                           { return 0 }
 func (*consumerClaimStub) InitialOffset() int64                       { return 10 }
@@ -66,6 +76,68 @@ func TestConsumerGroupHandler_RedeliversAfterSessionRestart(t *testing.T) {
 	}
 	if attempts != 2 || len(secondSession.marked) != 1 || secondSession.marked[0].Offset != msg.Offset {
 		t.Fatalf("attempts=%d marked=%+v", attempts, secondSession.marked)
+	}
+}
+
+func TestConsumerGroupHandler_PermanentErrorRequiresSuccessfulDLQPublish(t *testing.T) {
+	t.Parallel()
+	msg := &sarama.ConsumerMessage{
+		Topic: events.TopicNotePublished, Partition: 2, Offset: 17,
+		Key: []byte("note-1"), Value: []byte("not-json"),
+	}
+
+	t.Run("successful publish marks poison message", func(t *testing.T) {
+		producer := &deadLetterPublisherStub{}
+		handler := NewConsumerGroupHandlerWithDLQ(logger.NewNoOpLogger(), producer, map[string]MessageHandler{
+			events.TopicNotePublished: func(context.Context, *sarama.ConsumerMessage) error {
+				return Permanent(errors.New("invalid json"))
+			},
+		})
+		session := &consumerSessionStub{ctx: context.Background()}
+		if err := handler.ConsumeClaim(session, claimWithMessages(msg)); err != nil {
+			t.Fatalf("consume: %v", err)
+		}
+		if len(session.marked) != 1 {
+			t.Fatalf("poison message should be marked after DLQ ack, marked=%d", len(session.marked))
+		}
+		if producer.message == nil || producer.message.Topic != events.TopicNotePublished+DeadLetterSuffix {
+			t.Fatalf("unexpected DLQ message: %+v", producer.message)
+		}
+	})
+
+	t.Run("failed publish leaves poison message uncommitted", func(t *testing.T) {
+		producer := &deadLetterPublisherStub{err: errors.New("kafka unavailable")}
+		handler := NewConsumerGroupHandlerWithDLQ(logger.NewNoOpLogger(), producer, map[string]MessageHandler{
+			events.TopicNotePublished: func(context.Context, *sarama.ConsumerMessage) error {
+				return Permanent(errors.New("invalid json"))
+			},
+		})
+		session := &consumerSessionStub{ctx: context.Background()}
+		if err := handler.ConsumeClaim(session, claimWithMessages(msg)); err == nil {
+			t.Fatal("DLQ publish failure must fail the claim")
+		}
+		if len(session.marked) != 0 {
+			t.Fatalf("failed DLQ publish must not mark, marked=%d", len(session.marked))
+		}
+	})
+}
+
+func TestConsumerGroupHandler_BusyIsTransientAndUncommitted(t *testing.T) {
+	t.Parallel()
+	msg := &sarama.ConsumerMessage{Topic: events.TopicNotePublished, Partition: 0, Offset: 18}
+	producer := &deadLetterPublisherStub{}
+	handler := NewConsumerGroupHandlerWithDLQ(logger.NewNoOpLogger(), producer, map[string]MessageHandler{
+		events.TopicNotePublished: func(context.Context, *sarama.ConsumerMessage) error {
+			return ErrMessageInFlight
+		},
+	})
+	session := &consumerSessionStub{ctx: context.Background()}
+	err := handler.ConsumeClaim(session, claimWithMessages(msg))
+	if !errors.Is(err, ErrMessageInFlight) {
+		t.Fatalf("want ErrMessageInFlight, got %v", err)
+	}
+	if len(session.marked) != 0 || producer.message != nil {
+		t.Fatalf("BUSY must neither mark nor DLQ: marked=%d dlq=%+v", len(session.marked), producer.message)
 	}
 }
 

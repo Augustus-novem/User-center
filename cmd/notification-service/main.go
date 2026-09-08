@@ -45,6 +45,8 @@ func main() {
 	defer func() {
 		_ = group.Close()
 	}()
+	dlqProducer := ioc.InitKafkaSyncProducer(&cfg)
+	defer func() { _ = dlqProducer.Close() }()
 
 	welcomeMessageRepo := repository.NewRedisWelcomeMessageRepository(rdb)
 	deduper := worker.NewRedisDeduplicator(rdb, "notification:user_registered")
@@ -55,7 +57,7 @@ func main() {
 	)
 	notificationService := service.NewNotificationServiceImpl(notificationRepo)
 	communityHandler := notification.NewCommunityHandler(notificationService, appLogger)
-	consumerHandler := worker.NewConsumerGroupHandler(appLogger, map[string]worker.MessageHandler{
+	consumerHandler := worker.NewConsumerGroupHandlerWithDLQ(appLogger, dlqProducer, map[string]worker.MessageHandler{
 		events.TopicUserRegistered: registeredHandler.Handle,
 		events.TopicUserFollowed:   communityHandler.HandleUserFollowed,
 		events.TopicNoteLiked:      communityHandler.HandleNoteLiked,

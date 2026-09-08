@@ -3,9 +3,9 @@ package notification
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"user-center/internal/events"
 	"user-center/internal/service"
+	"user-center/internal/worker"
 	"user-center/pkg/logger"
 
 	"github.com/IBM/sarama"
@@ -25,6 +25,9 @@ func (h *CommunityHandler) HandleUserFollowed(ctx context.Context, msg *sarama.C
 	if err := decodeCommunityEvent(msg, events.TopicUserFollowed, &evt); err != nil {
 		return err
 	}
+	if evt.EventID == "" || evt.FollowerID <= 0 || evt.FolloweeID <= 0 || evt.OccurredAt <= 0 {
+		return worker.Permanentf("invalid %s event", events.TopicUserFollowed)
+	}
 	created, err := h.service.CreateFollow(ctx, evt.EventID, evt.FollowerID, evt.FolloweeID, evt.OccurredAt)
 	return h.finish(err, created, evt.EventID, evt.FolloweeID, evt.FollowerID, 0)
 }
@@ -33,6 +36,9 @@ func (h *CommunityHandler) HandleNoteLiked(ctx context.Context, msg *sarama.Cons
 	var evt events.NoteLikedEvent
 	if err := decodeCommunityEvent(msg, events.TopicNoteLiked, &evt); err != nil {
 		return err
+	}
+	if evt.EventID == "" || evt.UserID <= 0 || evt.NoteID <= 0 || evt.OccurredAt <= 0 {
+		return worker.Permanentf("invalid %s event", events.TopicNoteLiked)
 	}
 	created, err := h.service.CreateLike(ctx, evt.EventID, evt.UserID, evt.NoteID, evt.OccurredAt)
 	return h.finish(err, created, evt.EventID, 0, evt.UserID, evt.NoteID)
@@ -43,25 +49,28 @@ func (h *CommunityHandler) HandleCommentCreated(ctx context.Context, msg *sarama
 	if err := decodeCommunityEvent(msg, events.TopicCommentCreated, &evt); err != nil {
 		return err
 	}
+	if evt.EventID == "" || evt.CommentID <= 0 || evt.UserID <= 0 || evt.NoteID <= 0 || evt.OccurredAt <= 0 {
+		return worker.Permanentf("invalid %s event", events.TopicCommentCreated)
+	}
 	created, err := h.service.CreateComment(ctx, evt.EventID, evt.UserID, evt.NoteID, evt.CommentID, evt.OccurredAt)
 	return h.finish(err, created, evt.EventID, 0, evt.UserID, evt.NoteID)
 }
 
 func decodeCommunityEvent(msg *sarama.ConsumerMessage, expectedType string, target any) error {
 	if msg == nil {
-		return fmt.Errorf("decode %s event: nil message", expectedType)
+		return worker.Permanentf("decode %s event: nil message", expectedType)
 	}
 	if err := json.Unmarshal(msg.Value, target); err != nil {
-		return fmt.Errorf("decode %s event: %w", expectedType, err)
+		return worker.Permanentf("decode %s event: %w", expectedType, err)
 	}
 	var envelope struct {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal(msg.Value, &envelope); err != nil {
-		return fmt.Errorf("decode %s envelope: %w", expectedType, err)
+		return worker.Permanentf("decode %s envelope: %w", expectedType, err)
 	}
 	if envelope.Type != expectedType {
-		return fmt.Errorf("decode %s event: unexpected type %q", expectedType, envelope.Type)
+		return worker.Permanentf("decode %s event: unexpected type %q", expectedType, envelope.Type)
 	}
 	return nil
 }
