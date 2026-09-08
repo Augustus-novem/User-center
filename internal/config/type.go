@@ -133,6 +133,7 @@ type SearchConfig struct {
 	Enabled           bool          `mapstructure:"enabled"`
 	Address           string        `mapstructure:"address"`
 	Index             string        `mapstructure:"index"`
+	ConsumerGroup     string        `mapstructure:"consumer_group"`
 	RequestTimeout    time.Duration `mapstructure:"request_timeout"`
 	DBFallbackTimeout time.Duration `mapstructure:"db_fallback_timeout"`
 	FallbackWindow    time.Duration `mapstructure:"fallback_window"`

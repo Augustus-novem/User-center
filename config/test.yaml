@@ -103,6 +103,7 @@ search:
   enabled: false
   address: http://localhost:9200
   index: community_notes_test
+  consumer_group: user-center-search-worker-test
   request_timeout: 100ms
   db_fallback_timeout: 100ms
   fallback_window: 24h

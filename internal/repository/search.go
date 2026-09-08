@@ -13,3 +13,7 @@ type NoteSearchIndex interface {
 	Delete(ctx context.Context, noteID int64) error
 	Search(ctx context.Context, query string, limit int) ([]domain.Note, error)
 }
+
+type NoteRebuildSource interface {
+	ListPublishedAfterID(ctx context.Context, afterID int64, limit int) ([]domain.Note, error)
+}

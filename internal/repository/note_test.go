@@ -16,6 +16,7 @@ type noteDAOStub struct {
 	listImagesFn          func(ctx context.Context, noteID int64) ([]dao.NoteImageOfDB, error)
 	listByAuthorFn        func(ctx context.Context, authorID int64, status string, cursor *dao.NoteCursor, limit int) ([]dao.NoteOfDB, error)
 	listPublishedBeforeFn func(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]dao.NoteOfDB, error)
+	listPublishedAfterFn  func(ctx context.Context, afterID int64, limit int) ([]dao.NoteOfDB, error)
 	softDeleteFn          func(ctx context.Context, id, authorID int64) error
 }
 
@@ -67,6 +68,13 @@ func (s *noteDAOStub) ListPublishedBefore(ctx context.Context, authorID, exclusi
 		return nil, nil
 	}
 	return s.listPublishedBeforeFn(ctx, authorID, exclusiveMaxID, limit)
+}
+
+func (s *noteDAOStub) ListPublishedAfterID(ctx context.Context, afterID int64, limit int) ([]dao.NoteOfDB, error) {
+	if s.listPublishedAfterFn == nil {
+		return nil, nil
+	}
+	return s.listPublishedAfterFn(ctx, afterID, limit)
 }
 
 func (s *noteDAOStub) SoftDelete(ctx context.Context, id, authorID int64) error {

@@ -103,6 +103,7 @@ search:
   enabled: true
   address: http://elasticsearch:9200
   index: community_notes
+  consumer_group: user-center-search-worker
   request_timeout: 800ms
   db_fallback_timeout: 300ms
   fallback_window: 720h

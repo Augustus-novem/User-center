@@ -202,6 +202,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("search.enabled", false)
 	v.SetDefault("search.address", "http://localhost:9200")
 	v.SetDefault("search.index", "community_notes")
+	v.SetDefault("search.consumer_group", "user-center-search-worker")
 	v.SetDefault("search.request_timeout", "800ms")
 	v.SetDefault("search.db_fallback_timeout", "300ms")
 	v.SetDefault("search.fallback_window", "720h")
@@ -219,6 +220,7 @@ func bindEnvs(v *viper.Viper) {
 	mustBindEnv(v, "kafka.consumer_group", "KAFKA_CLIENT_GROUP")
 	mustBindEnv(v, "search.address", "ELASTICSEARCH_ADDRESS")
 	mustBindEnv(v, "search.index", "ELASTICSEARCH_INDEX")
+	mustBindEnv(v, "search.consumer_group", "SEARCH_CONSUMER_GROUP")
 	mustBindEnv(v, "jwt.access_token_key", "JWT_ACCESS_TOKEN_KEY")
 	mustBindEnv(v, "jwt.refresh_token_key", "JWT_REFRESH_TOKEN_KEY")
 	mustBindEnv(v, "wechat.app_id", "WECHAT_APP_ID")
@@ -303,6 +305,9 @@ func validate(cfg AppConfig) error {
 	}
 	if cfg.Search.Index == "" {
 		return fmt.Errorf("search.index 不能为空")
+	}
+	if cfg.Search.ConsumerGroup == "" {
+		return fmt.Errorf("search.consumer_group 不能为空")
 	}
 	if cfg.Search.RequestTimeout <= 0 || cfg.Search.DBFallbackTimeout <= 0 {
 		return fmt.Errorf("search timeout 必须大于 0")

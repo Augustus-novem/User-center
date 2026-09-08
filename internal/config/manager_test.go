@@ -134,7 +134,7 @@ wechat:
 	if cfg.HotRank.PublishWeight != 10 || cfg.HotRank.LikeWeight != 3 || cfg.HotRank.CommentWeight != 5 {
 		t.Fatalf("unexpected hot rank weights: %+v", cfg.HotRank)
 	}
-	if cfg.Search.Address != "http://localhost:9200" || cfg.Search.Index != "community_notes" || cfg.Search.RequestTimeout != 800*time.Millisecond {
+	if cfg.Search.Address != "http://localhost:9200" || cfg.Search.Index != "community_notes" || cfg.Search.ConsumerGroup != "user-center-search-worker" || cfg.Search.RequestTimeout != 800*time.Millisecond {
 		t.Fatalf("unexpected search defaults: %+v", cfg.Search)
 	}
 }
@@ -174,6 +174,7 @@ func TestValidate(t *testing.T) {
 		Search: SearchConfig{
 			Address:           "http://localhost:9200",
 			Index:             "community_notes",
+			ConsumerGroup:     "user-center-search-worker",
 			RequestTimeout:    800 * time.Millisecond,
 			DBFallbackTimeout: 300 * time.Millisecond,
 			FallbackWindow:    30 * 24 * time.Hour,
