@@ -15,7 +15,10 @@ import (
 	"user-center/internal/domain"
 )
 
-const maxErrorBody = 4096
+const (
+	maxErrorBody    = 4096
+	maxResponseBody = 2 * 1024 * 1024
+)
 
 type Elasticsearch struct {
 	address string
@@ -162,9 +165,12 @@ func (e *Elasticsearch) doJSON(ctx context.Context, method, path string, payload
 		return 0, nil, fmt.Errorf("Elasticsearch %s request: %w", method, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	response, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody+1))
+	response, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
 	if err != nil {
 		return 0, nil, fmt.Errorf("read Elasticsearch response: %w", err)
+	}
+	if len(response) > maxResponseBody {
+		return 0, nil, fmt.Errorf("Elasticsearch response exceeds %d bytes", maxResponseBody)
 	}
 	return resp.StatusCode, response, nil
 }

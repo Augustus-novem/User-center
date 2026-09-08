@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 	"user-center/internal/domain"
@@ -90,12 +91,12 @@ func TestSearch_NoteLifecycleThroughKafkaE2E(t *testing.T) {
 		items, err := index.Search(context.Background(), keyword, 10)
 		return containsSearchNote(items, noteID), err
 	})
-	apiResult := doJSON(t, httpServer.URL, http.MethodGet, "/search/notes?q="+url.QueryEscape(keyword), "", nil)
+	apiResult := doJSON(t, httpServer.URL, http.MethodGet, "/search/notes?q="+url.QueryEscape(keyword), token, nil)
 	if apiResult.Code != 0 || degradedFromData(apiResult.Data) {
 		t.Fatalf("search API should use Elasticsearch: %+v", apiResult)
 	}
 
-	updatedKeyword := keyword + "-updated"
+	updatedKeyword := "updated" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	if err := index.Index(context.Background(), domain.Note{
 		ID: noteID, AuthorID: profileID(t, httpServer.URL, token),
 		Title: updatedKeyword, Content: "updated adapter document",

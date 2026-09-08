@@ -58,6 +58,7 @@ func TestElasticsearchIndexLifecycle(t *testing.T) {
 
 func TestElasticsearchSearch(t *testing.T) {
 	t.Parallel()
+	largeContent := strings.Repeat("x", 5000)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/notes/_search" {
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
@@ -69,14 +70,25 @@ func TestElasticsearchSearch(t *testing.T) {
 			return
 		}
 		if body["size"].(float64) != 7 {
-			t.Fatalf("body=%+v", body)
+			t.Errorf("body=%+v", body)
+			return
 		}
-		_, _ = w.Write([]byte(`{"hits":{"hits":[{"_source":{"note_id":9,"author_id":3,"title":"Go","content":"search","created_at":123,"status":"published"}}]}}`))
+		response := map[string]any{
+			"hits": map[string]any{
+				"hits": []any{
+					map[string]any{"_source": map[string]any{
+						"note_id": 9, "author_id": 3, "title": "Go", "content": largeContent,
+						"created_at": 123, "status": "published",
+					}},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 	client, _ := NewElasticsearch(server.URL, "notes", time.Second)
 	notes, err := client.Search(context.Background(), "Go", 7)
-	if err != nil || len(notes) != 1 || notes[0].ID != 9 || notes[0].Title != "Go" {
+	if err != nil || len(notes) != 1 || notes[0].ID != 9 || notes[0].Title != "Go" || len(notes[0].Content) != 5000 {
 		t.Fatalf("notes=%+v err=%v", notes, err)
 	}
 }
