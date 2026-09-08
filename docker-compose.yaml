@@ -107,6 +107,7 @@ services:
     restart: always
     command: ["--config", "config/notification.docker.yaml"]
     depends_on:
+      - mysql8
       - redis
       - kafka
 

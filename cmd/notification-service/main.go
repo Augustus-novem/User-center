@@ -9,6 +9,8 @@ import (
 	"user-center/internal/events"
 	"user-center/internal/notification"
 	"user-center/internal/repository"
+	"user-center/internal/repository/dao"
+	"user-center/internal/service"
 	"user-center/internal/worker"
 	"user-center/ioc"
 	"user-center/pkg/logger"
@@ -38,6 +40,7 @@ func main() {
 	}
 
 	rdb := ioc.InitRedis(&cfg)
+	db := ioc.InitDB(&cfg)
 	group := ioc.InitKafkaConsumerGroup(&cfg)
 	defer func() {
 		_ = group.Close()
@@ -46,8 +49,17 @@ func main() {
 	welcomeMessageRepo := repository.NewRedisWelcomeMessageRepository(rdb)
 	deduper := worker.NewRedisDeduplicator(rdb, "notification:user_registered")
 	registeredHandler := notification.NewUserRegisteredHandler(welcomeMessageRepo, deduper, appLogger)
+	notificationRepo := repository.NewNotificationRepositoryImpl(
+		dao.NewGORMNotificationDAO(db),
+		dao.NewGORMNoteDAO(db),
+	)
+	notificationService := service.NewNotificationServiceImpl(notificationRepo)
+	communityHandler := notification.NewCommunityHandler(notificationService, appLogger)
 	consumerHandler := worker.NewConsumerGroupHandler(appLogger, map[string]worker.MessageHandler{
 		events.TopicUserRegistered: registeredHandler.Handle,
+		events.TopicUserFollowed:   communityHandler.HandleUserFollowed,
+		events.TopicNoteLiked:      communityHandler.HandleNoteLiked,
+		events.TopicCommentCreated: communityHandler.HandleCommentCreated,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -59,7 +71,12 @@ func main() {
 	)
 
 	for {
-		if err = group.Consume(ctx, []string{events.TopicUserRegistered}, consumerHandler); err != nil {
+		if err = group.Consume(ctx, []string{
+			events.TopicUserRegistered,
+			events.TopicUserFollowed,
+			events.TopicNoteLiked,
+			events.TopicCommentCreated,
+		}, consumerHandler); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
