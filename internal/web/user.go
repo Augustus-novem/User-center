@@ -51,6 +51,7 @@ func (u *UserHandler) Logout(ctx *gin.Context) {
 	err := u.ClearToken(ctx)
 	if err != nil {
 		JSONInternalServerError(ctx, "系统错误")
+		return
 	}
 	JSONOK(ctx, "退出登录", nil)
 }
@@ -58,6 +59,10 @@ func (u *UserHandler) Logout(ctx *gin.Context) {
 func (u *UserHandler) RefreshToken(ctx *gin.Context) {
 	err := u.Refresh(ctx)
 	if err != nil {
+		if errors.Is(err, jwt2.ErrJWTBackendUnavailable) {
+			JSONInternalServerError(ctx, "系统错误")
+			return
+		}
 		JSONUnauthorized(ctx, "请登录")
 		return
 	}

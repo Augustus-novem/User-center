@@ -30,9 +30,15 @@ func (conf AppConfig) Addr() string {
 }
 
 type ServerConfig struct {
-	Name string `mapstructure:"name"`
-	Port int    `mapstructure:"port"`
-	Mode string `mapstructure:"mode"`
+	Name                string        `mapstructure:"name"`
+	Port                int           `mapstructure:"port"`
+	Mode                string        `mapstructure:"mode"`
+	ReadHeaderTimeout   time.Duration `mapstructure:"read_header_timeout"`
+	ReadTimeout         time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout        time.Duration `mapstructure:"write_timeout"`
+	IdleTimeout         time.Duration `mapstructure:"idle_timeout"`
+	ShutdownTimeout     time.Duration `mapstructure:"shutdown_timeout"`
+	MaxRequestBodyBytes int64         `mapstructure:"max_request_body_bytes"`
 }
 
 type DBConfig struct {
@@ -69,6 +75,7 @@ type WechatConfig struct {
 	StateTokenKey   string        `mapstructure:"state_token_key"`
 	StateTokenTTL   time.Duration `mapstructure:"state_token_ttl"`
 	StateCookiePath string        `mapstructure:"state_cookie_path"`
+	HTTPTimeout     time.Duration `mapstructure:"http_timeout"`
 }
 
 type CORSConfig struct {

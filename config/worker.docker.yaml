@@ -4,7 +4,7 @@ server:
   mode: release
 
 db:
-  dsn: root:root@tcp(mysql8:3306)/user_center?charset=utf8mb4&parseTime=True&loc=Local
+  dsn: ""
 
 redis:
   addr: redis:6379
@@ -19,8 +19,8 @@ kafka:
   consumer_group: user-center-worker
 
 jwt:
-  access_token_key: dummy
-  refresh_token_key: dummy
+  access_token_key: ""
+  refresh_token_key: ""
   access_token_ttl: 15m
   refresh_token_ttl: 168h
   idle_timeout: 168h
@@ -31,7 +31,7 @@ wechat:
   app_key: ""
   redirect_url: http://localhost:8081/oauth2/wechat/callback
   state_cookie_name: jwt-state
-  state_token_key: dummy
+  state_token_key: ""
   state_token_ttl: 10m
   state_cookie_path: /oauth2/wechat/callback
 
@@ -68,7 +68,7 @@ log:
 
 feature:
   enable_wechat_login: false
-  enable_sms_login: true
+  enable_sms_login: false
   enable_debug_log: false
 
 feed:

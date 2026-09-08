@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 	"user-center/internal/domain"
 )
 
@@ -19,13 +20,17 @@ type service struct {
 	client      *http.Client
 }
 
-func NewService(appId string, appSecret string, redirect string) Service {
+func NewService(appId string, appSecret string, redirect string, timeouts ...time.Duration) Service {
+	timeout := 5 * time.Second
+	if len(timeouts) > 0 && timeouts[0] > 0 {
+		timeout = timeouts[0]
+	}
 	escaped := url.PathEscape(redirect)
 	return &service{
 		appId:       appId,
 		appSecret:   appSecret,
 		redirectURL: escaped,
-		client:      &http.Client{},
+		client:      &http.Client{Timeout: timeout},
 	}
 }
 
@@ -42,11 +47,10 @@ func (s *service) VerifyCode(ctx context.Context, code string) (domain.SocialAcc
 	queryParams.Set("code", code)
 	queryParams.Set("grant_type", "authorization_code")
 	accessTokenURL := baseURL + "?" + queryParams.Encode()
-	req, err := http.NewRequest("GET", accessTokenURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, accessTokenURL, nil)
 	if err != nil {
 		return domain.SocialAccount{}, err
 	}
-	req = req.WithContext(ctx)
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return domain.SocialAccount{}, err

@@ -9,7 +9,7 @@ import (
 )
 
 func InitWechatService(cfg *config.AppConfig) wechat.Service {
-	return wechat.NewService(cfg.Wechat.AppID, cfg.Wechat.AppKey, cfg.Wechat.RedirectURL)
+	return wechat.NewService(cfg.Wechat.AppID, cfg.Wechat.AppKey, cfg.Wechat.RedirectURL, cfg.Wechat.HTTPTimeout)
 }
 
 func InitOAuth2WechatHandler(cfg *config.AppConfig,

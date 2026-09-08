@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -36,8 +37,9 @@ type fakeRedis struct {
 	// 我们只覆写这几个测试实际会调用的方法。
 	redis.Cmdable
 
-	mu    sync.Mutex
-	store map[string]fakeRedisValue
+	mu      sync.Mutex
+	store   map[string]fakeRedisValue
+	evalErr error
 }
 
 func newFakeRedis() *fakeRedis {
@@ -103,41 +105,80 @@ func (f *fakeRedis) Exists(ctx context.Context, keys ...string) *redis.IntCmd {
 }
 
 func (f *fakeRedis) Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd {
-	// 这里只模拟你项目里用到的两段 Lua：
-	// 1. clear_token.lua: KEYS=2, ARGS=1
-	// 2. compare_and_set.lua: KEYS=1, ARGS=3
-	switch {
-	case len(keys) == 2 && len(args) == 1:
-		// clear_token.lua
+	if f.evalErr != nil {
+		return redis.NewCmdResult(nil, f.evalErr)
+	}
+	switch script {
+	case luaClearTokenCode:
 		ttlSeconds, ok := toInt(args[0])
 		if !ok {
 			return redis.NewCmdResult(nil, errors.New("invalid ttl arg"))
 		}
 		f.del(keys[0])
-		f.set(keys[1], "logout", time.Duration(ttlSeconds)*time.Second)
+		f.del(keys[1])
+		f.set(keys[2], "logout", time.Duration(ttlSeconds)*time.Second)
 		return redis.NewCmdResult(int64(1), nil)
-
-	case len(keys) == 1 && len(args) == 3:
-		// compare_and_set.lua
+	case luaCreateSessionCode:
+		jti, ok1 := args[0].(string)
+		idleMS, ok2 := toInt(args[1])
+		absoluteMS, ok3 := toInt(args[2])
+		deadline, ok4 := toInt64(args[3])
+		if !ok1 || !ok2 || !ok3 || !ok4 {
+			return redis.NewCmdResult(nil, errors.New("invalid create args"))
+		}
+		f.del(keys[2])
+		f.set(keys[1], strconv.FormatInt(deadline, 10), time.Duration(absoluteMS)*time.Millisecond)
+		f.set(keys[0], jti, time.Duration(min(idleMS, absoluteMS))*time.Millisecond)
+		return redis.NewCmdResult(int64(1), nil)
+	case luaTouchSessionCode:
+		idleMS, ok := toInt(args[0])
+		if !ok {
+			return redis.NewCmdResult(nil, errors.New("invalid touch args"))
+		}
+		if _, logout := f.get(keys[0]); logout {
+			return redis.NewCmdResult(int64(0), nil)
+		}
+		refresh, refreshOK := f.get(keys[1])
+		absoluteTTL, absoluteOK := f.ttl(keys[2])
+		if !refreshOK || !absoluteOK {
+			return redis.NewCmdResult(int64(0), nil)
+		}
+		f.set(keys[1], refresh, minDuration(time.Duration(idleMS)*time.Millisecond, absoluteTTL))
+		return redis.NewCmdResult(int64(1), nil)
+	case luaRotateRefreshCode:
 		oldJTI, ok1 := args[0].(string)
 		newJTI, ok2 := args[1].(string)
-		ttlSeconds, ok3 := toInt(args[2])
+		idleMS, ok3 := toInt(args[2])
 		if !ok1 || !ok2 || !ok3 {
 			return redis.NewCmdResult(nil, errors.New("invalid rotation args"))
 		}
-
+		if _, logout := f.get(keys[2]); logout {
+			return redis.NewCmdResult(int64(0), nil)
+		}
 		cur, ok := f.get(keys[0])
-		if !ok {
+		absoluteTTL, absoluteOK := f.ttl(keys[1])
+		if !ok || !absoluteOK {
 			return redis.NewCmdResult(int64(0), nil)
 		}
 		if cur != oldJTI {
 			return redis.NewCmdResult(int64(0), nil)
 		}
-		f.set(keys[0], newJTI, time.Duration(ttlSeconds)*time.Second)
+		f.set(keys[0], newJTI, minDuration(time.Duration(idleMS)*time.Millisecond, absoluteTTL))
 		return redis.NewCmdResult(int64(1), nil)
 
 	default:
 		return redis.NewCmdResult(nil, errors.New("unexpected eval call"))
+	}
+}
+
+func toInt64(v interface{}) (int64, bool) {
+	switch val := v.(type) {
+	case int64:
+		return val, true
+	case int:
+		return int64(val), true
+	default:
+		return 0, false
 	}
 }
 
@@ -174,9 +215,10 @@ func newGinCtx(method, path string) (*gin.Context, *httptest.ResponseRecorder) {
 func mustRefreshToken(t *testing.T, uid int64, ssid, jti string, ttl time.Duration) string {
 	t.Helper()
 	token := gjwt.NewWithClaims(gjwt.SigningMethodHS256, RefreshClaims{
-		Id:   uid,
-		Ssid: ssid,
-		Jti:  jti,
+		Id:                uid,
+		Ssid:              ssid,
+		Jti:               jti,
+		AbsoluteExpiresAt: time.Now().Add(testJWTConfig().AbsoluteTimeout).UnixMilli(),
 		RegisteredClaims: gjwt.RegisteredClaims{
 			ExpiresAt: gjwt.NewNumericDate(time.Now().Add(ttl)),
 		},
@@ -186,6 +228,12 @@ func mustRefreshToken(t *testing.T, uid int64, ssid, jti string, ttl time.Durati
 		t.Fatalf("sign refresh token: %v", err)
 	}
 	return tokenStr
+}
+
+func seedFakeSession(fake *fakeRedis, h *RedisHandler, ssid, jti string) {
+	absoluteExpiresAt := time.Now().Add(h.absoluteTTL)
+	fake.set(h.absoluteKey(ssid), strconv.FormatInt(absoluteExpiresAt.UnixMilli(), 10), h.absoluteTTL)
+	fake.set(h.refreshKey(ssid), jti, minDuration(h.idleTTL, h.absoluteTTL))
 }
 
 func mustParseRefreshToken(t *testing.T, tokenStr string) RefreshClaims {
@@ -216,6 +264,7 @@ func TestRedisHandler_CheckSession(t *testing.T) {
 	h, fake := newTestRedisHandler(t)
 	ctx, _ := newGinCtx(http.MethodGet, "/user/profile")
 	ssid := "check-session-ssid"
+	seedFakeSession(fake, h, ssid, "check-jti")
 
 	if err := h.CheckSession(ctx, ssid); err != nil {
 		t.Fatalf("not logged out yet, should pass, got err=%v", err)
@@ -228,12 +277,45 @@ func TestRedisHandler_CheckSession(t *testing.T) {
 	}
 }
 
+func TestRedisHandler_CheckSessionDistinguishesBackendAndExpiry(t *testing.T) {
+	h, fake := newTestRedisHandler(t)
+	ctx, _ := newGinCtx(http.MethodGet, "/user/profile")
+
+	fake.evalErr = errors.New("redis unavailable")
+	if err := h.CheckSession(ctx, "ssid"); !errors.Is(err, ErrJWTBackendUnavailable) {
+		t.Fatalf("want backend unavailable, got %v", err)
+	}
+	fake.evalErr = nil
+	if err := h.CheckSession(ctx, "ssid"); !errors.Is(err, ErrJWTTokenSessionExpired) {
+		t.Fatalf("want expired session, got %v", err)
+	}
+}
+
+func TestRedisHandler_IdleTouchCannotExtendAbsoluteLifetime(t *testing.T) {
+	h, fake := newTestRedisHandler(t)
+	ctx, _ := newGinCtx(http.MethodGet, "/user/profile")
+	ssid := "absolute-cap-ssid"
+	fake.set(h.absoluteKey(ssid), "deadline", 2*time.Second)
+	fake.set(h.refreshKey(ssid), "jti", time.Second)
+	if err := h.CheckSession(ctx, ssid); err != nil {
+		t.Fatal(err)
+	}
+	refreshTTL, ok := fake.ttl(h.refreshKey(ssid))
+	if !ok || refreshTTL <= 0 || refreshTTL > 2*time.Second {
+		t.Fatalf("idle touch exceeded absolute TTL: %v", refreshTTL)
+	}
+	fake.del(h.absoluteKey(ssid))
+	if err := h.CheckSession(ctx, ssid); !errors.Is(err, ErrJWTTokenSessionExpired) {
+		t.Fatalf("missing absolute lease must expire session, got %v", err)
+	}
+}
+
 func TestRedisHandler_ClearToken(t *testing.T) {
 	h, fake := newTestRedisHandler(t)
 	ctx, recorder := newGinCtx(http.MethodPost, "/user/logout")
 	ssid := "logout-ssid"
 
-	fake.set(h.refreshKey(ssid), "old-jti", h.rtTTL)
+	seedFakeSession(fake, h, ssid, "old-jti")
 	ctx.Set("user", &UserClaims{Id: 123, Ssid: ssid})
 
 	if err := h.ClearToken(ctx); err != nil {
@@ -283,7 +365,7 @@ func TestRedisHandler_Refresh_RotationSuccess(t *testing.T) {
 		ssid   = "refresh-ssid"
 		oldJTI = "old-jti"
 	)
-	fake.set(h.refreshKey(ssid), oldJTI, h.rtTTL)
+	seedFakeSession(fake, h, ssid, oldJTI)
 
 	oldRT := mustRefreshToken(t, uid, ssid, oldJTI, h.rtTTL)
 	ctx.Request.Header.Set("x-refresh-token", oldRT)
@@ -331,7 +413,7 @@ func TestRedisHandler_Refresh_UsingOldTokenAfterRotationFails(t *testing.T) {
 		ssid   = "refresh-old-token-ssid"
 		oldJTI = "old-jti"
 	)
-	fake.set(h.refreshKey(ssid), oldJTI, h.rtTTL)
+	seedFakeSession(fake, h, ssid, oldJTI)
 	oldRT := mustRefreshToken(t, uid, ssid, oldJTI, h.rtTTL)
 
 	firstCtx, firstRecorder := newGinCtx(http.MethodPost, "/user/refresh_token")
@@ -369,7 +451,7 @@ func TestRedisHandler_Refresh_FailsAfterLogout(t *testing.T) {
 		ssid = "logout-refresh-ssid"
 		jti  = "jti-before-logout"
 	)
-	fake.set(h.refreshKey(ssid), jti, h.rtTTL)
+	seedFakeSession(fake, h, ssid, jti)
 
 	logoutCtx, _ := newGinCtx(http.MethodPost, "/user/logout")
 	logoutCtx.Set("user", &UserClaims{Id: uid, Ssid: ssid})
@@ -384,5 +466,30 @@ func TestRedisHandler_Refresh_FailsAfterLogout(t *testing.T) {
 	err := h.Refresh(refreshCtx)
 	if !errors.Is(err, ErrJWTTokenInvalid) {
 		t.Fatalf("refresh after logout should fail, got err=%v", err)
+	}
+}
+
+func TestRedisHandler_RefreshRejectsUnexpectedSigningMethod(t *testing.T) {
+	h, fake := newTestRedisHandler(t)
+	const (
+		uid  = int64(123)
+		ssid = "refresh-method-ssid"
+		jti  = "refresh-method-jti"
+	)
+	seedFakeSession(fake, h, ssid, jti)
+	claims := RefreshClaims{
+		Id: uid, Ssid: ssid, Jti: jti,
+		AbsoluteExpiresAt: time.Now().Add(time.Hour).UnixMilli(),
+		RegisteredClaims:  gjwt.RegisteredClaims{ExpiresAt: gjwt.NewNumericDate(time.Now().Add(time.Hour))},
+	}
+	token := gjwt.NewWithClaims(gjwt.SigningMethodHS384, claims)
+	tokenStr, err := token.SignedString([]byte(testJWTConfig().RefreshTokenKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, _ := newGinCtx(http.MethodPost, "/user/refresh_token")
+	ctx.Request.Header.Set("x-refresh-token", tokenStr)
+	if err = h.Refresh(ctx); !errors.Is(err, ErrJWTTokenInvalid) {
+		t.Fatalf("want invalid signing method, got %v", err)
 	}
 }

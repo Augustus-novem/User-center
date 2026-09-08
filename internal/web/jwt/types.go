@@ -16,9 +16,10 @@ type Handler interface {
 }
 
 type RefreshClaims struct {
-	Id   int64
-	Ssid string
-	Jti  string
+	Id                int64
+	Ssid              string
+	Jti               string
+	AbsoluteExpiresAt int64 `json:"absolute_expires_at"`
 	jwt.RegisteredClaims
 }
 

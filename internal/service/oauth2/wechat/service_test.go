@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 	"user-center/internal/domain"
 )
 
@@ -29,6 +30,14 @@ func TestService_AuthURL(t *testing.T) {
 	want := "https://open.weixin.qq.com/connect/qrconnect?appid=appid-123&redirect_uri=" + url.PathEscape(redirect) + "&response_type=code&scope=snsapi_login&state=state-xyz#wechat_redirect"
 	if got != want {
 		t.Fatalf("want %s, got %s", want, got)
+	}
+}
+
+func TestService_HTTPClientTimeout(t *testing.T) {
+	t.Parallel()
+	svc := NewService("appid", "secret", "http://localhost/callback", 750*time.Millisecond).(*service)
+	if svc.client.Timeout != 750*time.Millisecond {
+		t.Fatalf("timeout=%v", svc.client.Timeout)
 	}
 }
 

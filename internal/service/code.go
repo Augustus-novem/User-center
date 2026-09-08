@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"user-center/internal/repository"
 	"user-center/internal/service/sms"
 )
@@ -40,8 +41,11 @@ func (cs *SMSCodeService) Verify(ctx context.Context,
 }
 
 func (cs *SMSCodeService) Send(ctx context.Context, biz, phone string) error {
-	code := cs.generate()
-	err := cs.CodeRepo.Store(ctx, biz, phone, code)
+	code, err := cs.generate()
+	if err != nil {
+		return fmt.Errorf("generate SMS code: %w", err)
+	}
+	err = cs.CodeRepo.Store(ctx, biz, phone, code)
 	if err != nil {
 		return err
 	}
@@ -49,7 +53,10 @@ func (cs *SMSCodeService) Send(ctx context.Context, biz, phone string) error {
 	return err
 }
 
-func (cs *SMSCodeService) generate() string {
-	code := rand.Intn(1000000)
-	return fmt.Sprintf("%06d", code)
+func (cs *SMSCodeService) generate() (string, error) {
+	code, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", code.Int64()), nil
 }

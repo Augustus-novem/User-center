@@ -28,7 +28,11 @@ func InitWebServer(cfg *config.AppConfig, funcs []gin.HandlerFunc,
 	notificationHdl *web.NotificationHandler) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 	server := gin.New()
+	if err := server.SetTrustedProxies(nil); err != nil {
+		panic(err)
+	}
 	server.Use(gin.Recovery())
+	server.Use(requestBodyLimit(cfg.Server.MaxRequestBodyBytes))
 	server.Use(funcs...)
 	userHdl.RegisterRoutes(server)
 	oauth2Hdl.RegisterRoutes(server)
@@ -42,6 +46,21 @@ func InitWebServer(cfg *config.AppConfig, funcs []gin.HandlerFunc,
 	searchHdl.RegisterRoutes(server)
 	notificationHdl.RegisterRoutes(server)
 	return server
+}
+
+func requestBodyLimit(maxBytes int64) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if ctx.Request.Body == nil {
+			ctx.Next()
+			return
+		}
+		if ctx.Request.ContentLength > maxBytes {
+			ctx.AbortWithStatus(http.StatusRequestEntityTooLarge)
+			return
+		}
+		ctx.Request.Body = http.MaxBytesReader(ctx.Writer, ctx.Request.Body, maxBytes)
+		ctx.Next()
+	}
 }
 
 func GinMiddlewares(cfg *config.AppConfig, dyn config.DynamicProvider,

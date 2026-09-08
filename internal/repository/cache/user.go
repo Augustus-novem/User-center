@@ -21,6 +21,16 @@ type RedisUserCache struct {
 	expiration time.Duration
 }
 
+type userCacheDTO struct {
+	ID       int64     `json:"id"`
+	Email    string    `json:"email"`
+	Phone    string    `json:"phone"`
+	NickName string    `json:"nickname"`
+	AboutMe  string    `json:"about_me"`
+	Birthday time.Time `json:"birthday"`
+	Ctime    int64     `json:"ctime"`
+}
+
 func NewRedisUserCache(cmd redis.Cmdable) *RedisUserCache {
 	return &RedisUserCache{
 		cmd:        cmd,
@@ -35,17 +45,25 @@ func (cache *RedisUserCache) Get(ctx context.Context,
 	if err != nil {
 		return domain.User{}, err
 	}
-	var user domain.User
-	err = json.Unmarshal([]byte(data), &user)
+	var dto userCacheDTO
+	err = json.Unmarshal([]byte(data), &dto)
 	if err != nil {
 		return domain.User{}, err
 	}
-	return user, nil
+	return domain.User{
+		Id: dto.ID, Email: dto.Email, Phone: dto.Phone,
+		NickName: dto.NickName, AboutMe: dto.AboutMe,
+		Birthday: dto.Birthday, Ctime: dto.Ctime,
+	}, nil
 }
 
 func (cache *RedisUserCache) Set(ctx context.Context, user domain.User) error {
 	key := cache.key(user.Id)
-	data, err := json.Marshal(user)
+	data, err := json.Marshal(userCacheDTO{
+		ID: user.Id, Email: user.Email, Phone: user.Phone,
+		NickName: user.NickName, AboutMe: user.AboutMe,
+		Birthday: user.Birthday, Ctime: user.Ctime,
+	})
 	if err != nil {
 		return err
 	}

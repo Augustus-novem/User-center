@@ -22,8 +22,8 @@ func (s *Service) Send(ctx context.Context, tplId string,
 	args []string, numbers ...string) error {
 	s.logger.Info("发送短信验证码（本地模拟）",
 		logger.Field{Key: "tplId", Value: tplId},
-		logger.Field{Key: "args", Value: args},
-		logger.Field{Key: "numbers", Value: numbers},
+		logger.Field{Key: "argument_count", Value: len(args)},
+		logger.Field{Key: "recipient_count", Value: len(numbers)},
 	)
 	return nil
 }

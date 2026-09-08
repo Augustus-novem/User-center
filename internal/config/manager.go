@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -153,6 +154,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.name", "user-center")
 	v.SetDefault("server.port", 8081)
 	v.SetDefault("server.mode", "debug")
+	v.SetDefault("server.read_header_timeout", "5s")
+	v.SetDefault("server.read_timeout", "10s")
+	v.SetDefault("server.write_timeout", "15s")
+	v.SetDefault("server.idle_timeout", "60s")
+	v.SetDefault("server.shutdown_timeout", "10s")
+	v.SetDefault("server.max_request_body_bytes", 1048576)
 	v.SetDefault("redis.db", 1)
 	v.SetDefault("kafka.enabled", false)
 	v.SetDefault("kafka.brokers", []string{"localhost:9092"})
@@ -166,6 +173,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("wechat.state_cookie_name", "jwt-state")
 	v.SetDefault("wechat.state_token_ttl", "10m")
 	v.SetDefault("wechat.state_cookie_path", "/oauth2/wechat/callback")
+	v.SetDefault("wechat.http_timeout", "5s")
 	v.SetDefault("cors.allow_credentials", true)
 	v.SetDefault("cors.allow_methods", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 	v.SetDefault("cors.allow_headers", []string{"Content-Type", "Authorization", "X-Refresh-Token"})
@@ -239,6 +247,12 @@ func validate(cfg AppConfig) error {
 	if cfg.Server.Port <= 0 {
 		return fmt.Errorf("server.port 必须大于 0")
 	}
+	if cfg.Server.ReadHeaderTimeout <= 0 || cfg.Server.ReadTimeout <= 0 || cfg.Server.WriteTimeout <= 0 || cfg.Server.IdleTimeout <= 0 || cfg.Server.ShutdownTimeout <= 0 {
+		return fmt.Errorf("server timeout 必须大于 0")
+	}
+	if cfg.Server.MaxRequestBodyBytes <= 0 {
+		return fmt.Errorf("server.max_request_body_bytes 必须大于 0")
+	}
 	if cfg.DB.DSN == "" {
 		return fmt.Errorf("db.dsn 不能为空")
 	}
@@ -256,11 +270,20 @@ func validate(cfg AppConfig) error {
 			return fmt.Errorf("kafka.consumer_group 不能为空")
 		}
 	}
-	if cfg.JWT.AccessTokenKey == "" {
+	usesJWT := cfg.Server.Name == "user-center"
+	if usesJWT && cfg.JWT.AccessTokenKey == "" {
 		return fmt.Errorf("jwt.access_token_key 不能为空")
 	}
-	if cfg.JWT.RefreshTokenKey == "" {
+	if usesJWT && cfg.JWT.RefreshTokenKey == "" {
 		return fmt.Errorf("jwt.refresh_token_key 不能为空")
+	}
+	if cfg.Server.Mode == "release" {
+		if usesJWT && (isPlaceholderSecret(cfg.JWT.AccessTokenKey) || isPlaceholderSecret(cfg.JWT.RefreshTokenKey)) {
+			return fmt.Errorf("release 模式拒绝 placeholder/dummy JWT secret")
+		}
+		if cfg.Feature.EnableWechatLogin && (isPlaceholderSecret(cfg.Wechat.AppKey) || isPlaceholderSecret(cfg.Wechat.StateTokenKey)) {
+			return fmt.Errorf("release 模式拒绝 placeholder/dummy WeChat secret")
+		}
 	}
 	if cfg.Log.File.Enabled {
 		if cfg.Log.File.Filename == "" {
@@ -330,6 +353,12 @@ func validate(cfg AppConfig) error {
 	if cfg.JWT.AbsoluteTimeout <= 0 {
 		return fmt.Errorf("jwt.absolute_timeout 必须大于 0")
 	}
+	if cfg.JWT.IdleTimeout > cfg.JWT.AbsoluteTimeout {
+		return fmt.Errorf("jwt.idle_timeout 不能大于 jwt.absolute_timeout")
+	}
+	if cfg.Server.Mode == "release" && cfg.Feature.EnableSMSLogin {
+		return fmt.Errorf("release 模式禁止启用 LocalSMS 登录")
+	}
 	if cfg.Feature.EnableWechatLogin {
 		if cfg.Wechat.AppID == "" {
 			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.app_id 不能为空")
@@ -352,6 +381,22 @@ func validate(cfg AppConfig) error {
 		if cfg.Wechat.StateCookiePath == "" {
 			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.state_cookie_path 不能为空")
 		}
+		if cfg.Wechat.HTTPTimeout <= 0 {
+			return fmt.Errorf("feature.enable_wechat_login=true 时，wechat.http_timeout 必须大于 0")
+		}
 	}
 	return nil
+}
+
+func isPlaceholderSecret(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return true
+	}
+	for _, marker := range []string{"${", "dummy", "placeholder", "replace_me", "replace-me", "not-a-secret", "changeme", "dev-only"} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
 }

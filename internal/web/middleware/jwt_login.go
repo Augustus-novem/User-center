@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"time"
 	jwt2 "user-center/internal/web/jwt"
@@ -52,6 +53,10 @@ func (j *JWTLoginMiddlewareBuilder) Build() gin.HandlerFunc {
 		}
 		err = j.CheckSession(ctx, uc.Ssid)
 		if err != nil {
+			if errors.Is(err, jwt2.ErrJWTBackendUnavailable) {
+				ctx.AbortWithStatus(http.StatusServiceUnavailable)
+				return
+			}
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}

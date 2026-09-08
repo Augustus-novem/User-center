@@ -141,9 +141,14 @@ wechat:
 
 func TestValidate(t *testing.T) {
 	base := AppConfig{
-		Server: ServerConfig{Port: 8081},
-		DB:     DBConfig{DSN: "root:root@tcp(localhost:13316)/webook"},
-		Redis:  RedisConfig{Addr: "localhost:6379", DB: 1},
+		Server: ServerConfig{
+			Name: "user-center", Port: 8081,
+			ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
+			WriteTimeout: 15 * time.Second, IdleTimeout: time.Minute,
+			ShutdownTimeout: 10 * time.Second, MaxRequestBodyBytes: 1 << 20,
+		},
+		DB:    DBConfig{DSN: "root:root@tcp(localhost:13316)/webook"},
+		Redis: RedisConfig{Addr: "localhost:6379", DB: 1},
 		JWT: JWTConfig{
 			AccessTokenKey:  "access-key",
 			RefreshTokenKey: "refresh-key",
@@ -160,6 +165,7 @@ func TestValidate(t *testing.T) {
 			StateTokenKey:   "state-key",
 			StateTokenTTL:   10 * time.Minute,
 			StateCookiePath: "/oauth2/wechat/callback",
+			HTTPTimeout:     5 * time.Second,
 		},
 		RateLimit: RateLimitConfig{Enabled: true, Limit: 100},
 		Feature:   FeatureConfig{EnableWechatLogin: true},
@@ -234,6 +240,26 @@ func TestValidate(t *testing.T) {
 				t.Fatalf("want err %q, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestValidateReleaseRejectsPlaceholderSecretsAndLocalSMS(t *testing.T) {
+	manager, err := NewManager("../../config/test.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := manager.App()
+	cfg.Server.Mode = "release"
+	cfg.Feature.EnableSMSLogin = false
+	cfg.JWT.AccessTokenKey = "REPLACE_ME_ACCESS_TOKEN_KEY"
+	if err = validate(cfg); err == nil || !strings.Contains(err.Error(), "placeholder/dummy JWT") {
+		t.Fatalf("want placeholder rejection, got %v", err)
+	}
+	cfg.JWT.AccessTokenKey = "release-access-secret-value"
+	cfg.JWT.RefreshTokenKey = "release-refresh-secret-value"
+	cfg.Feature.EnableSMSLogin = true
+	if err = validate(cfg); err == nil || !strings.Contains(err.Error(), "LocalSMS") {
+		t.Fatalf("want LocalSMS release rejection, got %v", err)
 	}
 }
 

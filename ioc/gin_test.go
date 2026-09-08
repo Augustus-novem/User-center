@@ -2,8 +2,10 @@ package ioc
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	appconfig "user-center/internal/config"
 	"user-center/internal/web"
@@ -13,6 +15,28 @@ import (
 
 type dynamicProviderStub struct {
 	dynamic appconfig.DynamicConfig
+}
+
+func TestRequestBodyLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	server := gin.New()
+	server.Use(requestBodyLimit(4))
+	reached := false
+	server.POST("/body", func(ctx *gin.Context) {
+		reached = true
+		_, err := io.ReadAll(ctx.Request.Body)
+		if err != nil {
+			ctx.Status(http.StatusRequestEntityTooLarge)
+			return
+		}
+		ctx.Status(http.StatusNoContent)
+	})
+	req := httptest.NewRequest(http.MethodPost, "/body", strings.NewReader("12345"))
+	resp := httptest.NewRecorder()
+	server.ServeHTTP(resp, req)
+	if reached || resp.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body reached=%v status=%d", reached, resp.Code)
+	}
 }
 
 func (d *dynamicProviderStub) Dynamic() appconfig.DynamicConfig {

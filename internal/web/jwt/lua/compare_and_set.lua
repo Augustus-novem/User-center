@@ -1,16 +1,20 @@
-local key = KEYS[1]
-local old = ARGV[1]
-local new = ARGV[2]
-local ttl = tonumber(ARGV[3])
+local refreshKey = KEYS[1]
+local absoluteKey = KEYS[2]
+local logoutKey = KEYS[3]
+local oldJTI = ARGV[1]
+local newJTI = ARGV[2]
+local idleTTL = tonumber(ARGV[3])
 
-local cur = redis.call("GET", key)
-if not cur then
+if redis.call("EXISTS", logoutKey) == 1 then
     return 0
 end
-
-if cur ~= old then
+if redis.call("GET", refreshKey) ~= oldJTI then
     return 0
 end
-
-redis.call("SET", key, new, "EX", ttl)
+local absoluteTTL = redis.call("PTTL", absoluteKey)
+if absoluteTTL <= 0 then
+    return 0
+end
+local ttl = math.min(idleTTL, absoluteTTL)
+redis.call("SET", refreshKey, newJTI, "PX", ttl)
 return 1

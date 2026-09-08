@@ -4,7 +4,7 @@ services:
     restart: always
     command: --default-authentication-plugin=mysql_native_password
     environment:
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
       MYSQL_DATABASE: user_center
     volumes:
       - ./script/mysql:/docker-entrypoint-initdb.d
@@ -62,9 +62,10 @@ services:
     restart: always
     command: ["--config", "config/docker.yaml"]
     environment:
-      JWT_ACCESS_TOKEN_KEY: ${JWT_ACCESS_TOKEN_KEY}
-      JWT_REFRESH_TOKEN_KEY: ${JWT_REFRESH_TOKEN_KEY}
-      WECHAT_STATE_TOKEN_KEY: ${WECHAT_STATE_TOKEN_KEY:-dummy-state-key}
+      DB_DSN: ${DB_DSN:-}
+      JWT_ACCESS_TOKEN_KEY: ${JWT_ACCESS_TOKEN_KEY:-}
+      JWT_REFRESH_TOKEN_KEY: ${JWT_REFRESH_TOKEN_KEY:-}
+      WECHAT_STATE_TOKEN_KEY: ${WECHAT_STATE_TOKEN_KEY:-}
     depends_on:
       - mysql8
       - redis
@@ -80,6 +81,8 @@ services:
         SERVICE_PATH: ./cmd/worker
     restart: always
     command: ["--config", "config/worker.docker.yaml"]
+    environment:
+      DB_DSN: ${DB_DSN:-}
     depends_on:
       - mysql8
       - redis
@@ -93,6 +96,8 @@ services:
         SERVICE_PATH: ./cmd/search-worker
     restart: always
     command: ["--config", "config/worker.docker.yaml"]
+    environment:
+      DB_DSN: ${DB_DSN:-}
     depends_on:
       - mysql8
       - kafka
@@ -106,6 +111,8 @@ services:
         SERVICE_PATH: ./cmd/notification-service
     restart: always
     command: ["--config", "config/notification.docker.yaml"]
+    environment:
+      DB_DSN: ${DB_DSN:-}
     depends_on:
       - mysql8
       - redis
