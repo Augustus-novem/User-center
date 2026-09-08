@@ -62,7 +62,7 @@ func BenchmarkOutboxKafkaLatency_e2e(b *testing.B) {
 	if err != nil {
 		b.Fatalf("producer: %v", err)
 	}
-	db := isolatedOutboxBenchmarkDB(b, cfg.DB.DSN)
+	db := isolatedBenchmarkDB(b, cfg.DB.DSN, &dao.EventOutboxOfDB{})
 	outboxRepo := repository.NewEventOutboxRepositoryImpl(dao.NewGORMEventOutboxDAO(db))
 	relay := events.NewOutboxRelay(outboxRepo, producer, logger.NewNoOpLogger())
 	b.Cleanup(func() {
@@ -93,7 +93,7 @@ func BenchmarkOutboxKafkaLatency_e2e(b *testing.B) {
 	}
 }
 
-func isolatedOutboxBenchmarkDB(b *testing.B, dsn string) *gorm.DB {
+func isolatedBenchmarkDB(b *testing.B, dsn string, models ...any) *gorm.DB {
 	b.Helper()
 	dsnConfig, err := mysqlDriver.ParseDSN(dsn)
 	if err != nil {
@@ -115,8 +115,8 @@ func isolatedOutboxBenchmarkDB(b *testing.B, dsn string) *gorm.DB {
 	if err != nil {
 		b.Fatalf("open isolated database: %v", err)
 	}
-	if err = db.AutoMigrate(&dao.EventOutboxOfDB{}); err != nil {
-		b.Fatalf("migrate isolated outbox: %v", err)
+	if err = db.AutoMigrate(models...); err != nil {
+		b.Fatalf("migrate isolated database: %v", err)
 	}
 	b.Cleanup(func() {
 		if sqlDB, dbErr := db.DB(); dbErr == nil {
@@ -158,7 +158,7 @@ func BenchmarkSearchPaths_e2e(b *testing.B) {
 		}
 	})
 
-	db := ioc.InitDB(&cfg)
+	db := isolatedBenchmarkDB(b, cfg.DB.DSN, &dao.NoteOfDB{}, &dao.NoteImageOfDB{})
 	notes := repository.NewNoteRepositoryImpl(dao.NewGORMNoteDAO(db))
 	keyword := "m11-search-" + uuid.NewString()
 	note, err := notes.Create(context.Background(), domain.Note{
