@@ -81,6 +81,10 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	noteSearchIndex := ioc.InitNoteSearchIndex(cfg)
 	searchService := ioc.InitSearchService(cfg, noteSearchIndex, cachedNoteRepository, l)
 	searchHandler := web.NewSearchHandler(searchService)
-	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler, engagementHandler, feedHandler, hotRankHandler, searchHandler)
+	gormNotificationDAO := dao.NewGORMNotificationDAO(db)
+	notificationRepositoryImpl := repository.NewNotificationRepositoryImpl(gormNotificationDAO, gormNoteDAO)
+	notificationServiceImpl := service.NewNotificationServiceImpl(notificationRepositoryImpl)
+	notificationHandler := web.NewNotificationHandler(notificationServiceImpl)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler, engagementHandler, feedHandler, hotRankHandler, searchHandler, notificationHandler)
 	return engine
 }

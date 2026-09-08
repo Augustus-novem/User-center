@@ -24,7 +24,8 @@ func InitWebServer(cfg *config.AppConfig, funcs []gin.HandlerFunc,
 	checkInHdl *web.CheckInHandler, rankHdl *web.RankHandler,
 	followHdl *web.FollowHandler, noteHdl *web.NoteHandler,
 	engagementHdl *web.EngagementHandler, feedHdl *web.FeedHandler,
-	hotRankHdl *web.HotRankHandler, searchHdl *web.SearchHandler) *gin.Engine {
+	hotRankHdl *web.HotRankHandler, searchHdl *web.SearchHandler,
+	notificationHdl *web.NotificationHandler) *gin.Engine {
 	gin.SetMode(cfg.Server.Mode)
 	server := gin.New()
 	server.Use(gin.Recovery())
@@ -39,6 +40,7 @@ func InitWebServer(cfg *config.AppConfig, funcs []gin.HandlerFunc,
 	feedHdl.RegisterRoutes(server)
 	hotRankHdl.RegisterRoutes(server)
 	searchHdl.RegisterRoutes(server)
+	notificationHdl.RegisterRoutes(server)
 	return server
 }
 
