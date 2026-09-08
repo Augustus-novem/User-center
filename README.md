@@ -14,6 +14,7 @@
 - 关注 Feed（Hybrid）：普通作者 `note.published` 扇出到 Redis Inbox；follower 数达到 `feed.fanout_threshold` 的作者改走 Pull。`GET /feed/following` 按 `note_id` 合并 Inbox 与大 V 近况。
 - 内容热榜：worker 将 publish/like/comment 聚合到 Redis 分钟桶；`GET /rank/hot` 使用 60 分钟物化 snapshot 稳定分页。
 - 笔记全文搜索：独立 search worker 将 `note.published` / `note.deleted` 投影到 Elasticsearch；`GET /search/notes?q=...` 在 ES 失败时执行最近 30 天、最多 20 条、300ms 超时的 MySQL 有界降级。
+- 社区通知：`user.followed`、`note.liked`、`comment.created` 由 notification-service 消费并幂等落 MySQL；支持当前用户通知列表的稳定 cursor 分页和幂等已读。
 - 每日签到、月度签到记录、连续签到天数。
 - 日榜、月榜及个人排名查询。
 - MySQL Outbox、Kafka Relay、三个 Consumer Group。
@@ -37,6 +38,7 @@ flowchart LR
     Kafka --> SearchWorker[search-worker]
     Worker --> MySQL
     Worker --> Redis
+    Notification --> MySQL
     Notification --> Redis
     SearchWorker --> MySQL
     SearchWorker --> ES[(Elasticsearch)]
@@ -45,7 +47,7 @@ flowchart LR
 - `user-center` 处理 HTTP 请求与核心数据库事务，并在同一事务中写入 Outbox。
 - Relay 轮询待发布记录，发送成功后把记录标记为 `published`。
 - `worker` 消费注册、用户行为和 `note.published` 扇出事件。
-- `notification-service` 消费注册事件；当前“通知”是 Redis 中的欢迎消息，不是邮件或短信发送。
+- `notification-service` 消费注册、关注、点赞和评论事件；欢迎消息保留在 Redis，社区通知以 MySQL 为真相源，不包含邮件、短信或移动推送。
 - `search-worker` 使用独立 consumer group，把笔记事件投影到可重建的 Elasticsearch 索引；ES 不是真相源。
 
 ## 核心业务链路
@@ -81,12 +83,15 @@ POST /checkin
 |---|---|---|---|
 | `user.registered` | user-center Outbox Relay | `user-center-worker` | 欢迎积分 |
 | `user.registered` | user-center Outbox Relay | `user-center-notification-service` | Redis 欢迎消息 |
+| `user.followed` | user-center Outbox Relay | `user-center-notification-service` | MySQL 关注通知 |
 | `user.activity` | user-center Outbox Relay | `user-center-worker` | 行为日志与签到排行 |
 | `note.published` | user-center Outbox Relay | `user-center-worker` | Feed fanout/skip + Hot Ranking |
 | `note.published` | user-center Outbox Relay | `user-center-search-worker` | 写入笔记搜索索引 |
 | `note.deleted` | user-center Outbox Relay | `user-center-search-worker` | 删除笔记搜索文档 |
 | `note.liked` | user-center Outbox Relay | `user-center-worker` | Hot Ranking 加权聚合 |
+| `note.liked` | user-center Outbox Relay | `user-center-notification-service` | MySQL 点赞通知 |
 | `comment.created` | user-center Outbox Relay | `user-center-worker` | Hot Ranking 加权聚合 |
+| `comment.created` | user-center Outbox Relay | `user-center-notification-service` | MySQL 评论通知 |
 
 Sarama producer 使用 `WaitForAll`，Relay 按 at-least-once 语义工作。Consumer handler 成功返回后才提交消息；消费者必须按可能重复投递设计。
 
@@ -200,5 +205,6 @@ Windows 上运行 race detector 需要启用 CGO 并安装 C 编译器；也可�
 - M07 仅有受控 DAO harness 的 singleflight ON/OFF 回源对照；没有可声明的生产 QPS、P95/P99 或缓存命中率。
 - Outbox Relay 当前没有多实例抢占保护与退避策略。
 - 当前没有笔记更新 API，因此没有 `note.updated` producer；不得把 Elasticsearch 文档覆盖能力描述为已上线的业务更新链路。
+- 社区通知当前只有站内 MySQL 列表与已读状态；没有未读数缓存、聚合通知、邮件/短信/移动推送。
 
 后续增量开发规范见 [docs/community-dev](docs/community-dev/)；项目边界见 [PROJECT_BOUNDARY.md](docs/community-dev/PROJECT_BOUNDARY.md)。
