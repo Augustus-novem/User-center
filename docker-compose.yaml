@@ -40,6 +40,19 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.5.3
+    restart: always
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    mem_limit: 1g
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+
   user-center:
     build:
       context: .
@@ -72,6 +85,19 @@ services:
       - redis
       - kafka
 
+  search-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE_PATH: ./cmd/search-worker
+    restart: always
+    command: ["--config", "config/worker.docker.yaml"]
+    depends_on:
+      - mysql8
+      - kafka
+      - elasticsearch
+
   notification-service:
     build:
       context: .
@@ -86,3 +112,4 @@ services:
 
 volumes:
   mysql_data:
+  elasticsearch_data:
