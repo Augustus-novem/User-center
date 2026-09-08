@@ -56,7 +56,7 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	rankHandler := web.NewRankHandler(rankServiceImpl)
 	gormFollowDAO := dao.NewGORMFollowDAO(db)
 	followRepositoryImpl := repository.NewFollowRepositoryImpl(gormFollowDAO)
-	followServiceImpl := service.NewFollowServiceImpl(followRepositoryImpl, cachedUserRepository, l)
+	followServiceImpl := service.NewFollowServiceImpl(followRepositoryImpl, cachedUserRepository, transaction, publisher, l)
 	followHandler := web.NewFollowHandler(followServiceImpl)
 	gormNoteDAO := dao.NewGORMNoteDAO(db)
 	noteRepositoryImpl := repository.NewNoteRepositoryImpl(gormNoteDAO)

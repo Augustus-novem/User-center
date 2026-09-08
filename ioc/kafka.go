@@ -63,12 +63,14 @@ func EnsureKafkaTopics(cfg *config.AppConfig, l logger.Logger) error {
 	}
 	need := []string{
 		events.TopicUserRegistered,
+		events.TopicUserFollowed,
 		events.TopicUserActivity,
 		events.TopicNotePublished,
 		events.TopicNoteDeleted,
 		events.TopicNoteLiked,
 		events.TopicCommentCreated,
 		events.TopicUserRegistered + ".dlq",
+		events.TopicUserFollowed + ".dlq",
 		events.TopicUserActivity + ".dlq",
 		events.TopicNotePublished + ".dlq",
 		events.TopicNoteDeleted + ".dlq",

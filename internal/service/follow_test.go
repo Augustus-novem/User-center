@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 	"user-center/internal/domain"
+	"user-center/internal/events"
 	"user-center/internal/repository"
 	"user-center/pkg/logger"
 )
@@ -70,7 +71,7 @@ func (s *followRepoStub) FilterIDsByMinFollowers(ctx context.Context, followeeID
 }
 
 func newFollowService(followRepo repository.FollowRepository, users repository.UserRepository) *FollowServiceImpl {
-	return NewFollowServiceImpl(followRepo, users, logger.NewNoOpLogger())
+	return NewFollowServiceImpl(followRepo, users, &txStub{}, events.NopPublisher{}, logger.NewNoOpLogger())
 }
 
 func TestFollowService_Follow(t *testing.T) {
@@ -125,6 +126,52 @@ func TestFollowService_Follow(t *testing.T) {
 		}, existingUserRepo())
 		if err := svc.Follow(context.Background(), 1, 2); err != nil {
 			t.Fatalf("duplicate follow should succeed, got %v", err)
+		}
+	})
+
+	t.Run("writes relation and outbox in one transaction", func(t *testing.T) {
+		t.Parallel()
+		inTx := false
+		publisher := &publisherSpy{enabled: true}
+		svc := NewFollowServiceImpl(&followRepoStub{
+			createFn: func(ctx context.Context, followerID, followeeID int64) error {
+				if !inTx {
+					t.Fatal("Create must run inside transaction")
+				}
+				return nil
+			},
+		}, existingUserRepo(), &txStub{inTxFn: func(ctx context.Context, fn func(context.Context) error) error {
+			inTx = true
+			defer func() { inTx = false }()
+			return fn(ctx)
+		}}, publisher, logger.NewNoOpLogger())
+
+		if err := svc.Follow(context.Background(), 1, 2); err != nil {
+			t.Fatalf("follow: %v", err)
+		}
+		if len(publisher.calls) != 1 || publisher.calls[0].topic != events.TopicUserFollowed || publisher.calls[0].key != "2" {
+			t.Fatalf("unexpected publish calls: %+v", publisher.calls)
+		}
+		evt, ok := publisher.calls[0].value.(events.UserFollowedEvent)
+		if !ok || evt.EventID == "" || evt.FollowerID != 1 || evt.FolloweeID != 2 || evt.Type != events.TopicUserFollowed {
+			t.Fatalf("unexpected event: %+v", publisher.calls[0].value)
+		}
+	})
+
+	t.Run("does not publish duplicate follow", func(t *testing.T) {
+		t.Parallel()
+		publisher := &publisherSpy{enabled: true}
+		svc := NewFollowServiceImpl(&followRepoStub{
+			createFn: func(ctx context.Context, followerID, followeeID int64) error {
+				return repository.ErrFollowDuplicate
+			},
+		}, existingUserRepo(), &txStub{}, publisher, logger.NewNoOpLogger())
+
+		if err := svc.Follow(context.Background(), 1, 2); err != nil {
+			t.Fatalf("duplicate follow: %v", err)
+		}
+		if len(publisher.calls) != 0 {
+			t.Fatalf("duplicate follow must not publish, got %+v", publisher.calls)
 		}
 	})
 }

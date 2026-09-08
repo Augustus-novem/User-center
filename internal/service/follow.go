@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"user-center/internal/domain"
+	"user-center/internal/events"
 	"user-center/internal/repository"
 	"user-center/pkg/logger"
 )
@@ -32,13 +33,17 @@ type FollowService interface {
 type FollowServiceImpl struct {
 	followRepo repository.FollowRepository
 	userRepo   repository.UserRepository
+	tx         repository.Transaction
+	publisher  events.Publisher
 	logger     logger.Logger
 }
 
-func NewFollowServiceImpl(followRepo repository.FollowRepository, userRepo repository.UserRepository, l logger.Logger) *FollowServiceImpl {
+func NewFollowServiceImpl(followRepo repository.FollowRepository, userRepo repository.UserRepository, tx repository.Transaction, publisher events.Publisher, l logger.Logger) *FollowServiceImpl {
 	return &FollowServiceImpl{
 		followRepo: followRepo,
 		userRepo:   userRepo,
+		tx:         tx,
+		publisher:  publisher,
 		logger:     l,
 	}
 }
@@ -56,7 +61,12 @@ func (s *FollowServiceImpl) Follow(ctx context.Context, followerID, followeeID i
 		}
 		return err
 	}
-	err := s.followRepo.Create(ctx, followerID, followeeID)
+	err := s.tx.InTx(ctx, func(txCtx context.Context) error {
+		if txErr := s.followRepo.Create(txCtx, followerID, followeeID); txErr != nil {
+			return txErr
+		}
+		return s.publishUserFollowed(txCtx, followerID, followeeID)
+	})
 	if errors.Is(err, repository.ErrFollowDuplicate) {
 		s.logger.Info("follow already exists",
 			logger.Field{Key: "user_id", Value: followerID},
@@ -73,6 +83,14 @@ func (s *FollowServiceImpl) Follow(ctx context.Context, followerID, followeeID i
 		return err
 	}
 	return nil
+}
+
+func (s *FollowServiceImpl) publishUserFollowed(ctx context.Context, followerID, followeeID int64) error {
+	if s.publisher == nil || !s.publisher.IsEnabled() {
+		return nil
+	}
+	evt := events.NewUserFollowedEvent(followerID, followeeID)
+	return s.publisher.Publish(ctx, events.TopicUserFollowed, events.UserIDKey(followeeID), evt)
 }
 
 func (s *FollowServiceImpl) Unfollow(ctx context.Context, followerID, followeeID int64) error {
