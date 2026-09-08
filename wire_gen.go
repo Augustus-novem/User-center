@@ -78,6 +78,9 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 	hotRankRepositoryImpl := repository.NewHotRankRepositoryImpl(redisHotRankCache)
 	hotRankServiceImpl := ioc.InitHotRankService(hotRankRepositoryImpl, cfg)
 	hotRankHandler := web.NewHotRankHandler(hotRankServiceImpl)
-	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler, engagementHandler, feedHandler, hotRankHandler)
+	noteSearchIndex := ioc.InitNoteSearchIndex(cfg)
+	searchService := ioc.InitSearchService(cfg, noteSearchIndex, cachedNoteRepository, l)
+	searchHandler := web.NewSearchHandler(searchService)
+	engine := ioc.InitWebServer(cfg, v, userHandler, oAuth2WechatHandler, checkInHandler, rankHandler, followHandler, noteHandler, engagementHandler, feedHandler, hotRankHandler, searchHandler)
 	return engine
 }

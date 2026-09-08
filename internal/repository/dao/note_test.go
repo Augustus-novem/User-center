@@ -98,6 +98,28 @@ func TestGORMNoteDAO_ListPublishedAfterIDIsBounded(t *testing.T) {
 	}
 }
 
+func TestGORMNoteDAO_SearchRecentPublishedIsBounded(t *testing.T) {
+	t.Parallel()
+	db, mock, cleanup := newNoteMockDB(t)
+	defer cleanup()
+	rows := sqlmock.NewRows([]string{"id", "author_id", "title", "content", "status", "created_at", "updated_at"}).
+		AddRow(11, 8, "100% Go", "content", "published", 2000, 2000)
+	mock.ExpectQuery("SELECT .* FROM .*notes.* WHERE status = \\? AND created_at >= \\? AND \\(title LIKE \\? OR content LIKE \\?\\) ORDER BY created_at DESC, id DESC LIMIT \\?").
+		WithArgs("published", int64(1000), `%100\% Go%`, `%100\% Go%`, 5).
+		WillReturnRows(rows)
+
+	got, err := NewGORMNoteDAO(db).SearchRecentPublished(context.Background(), "100% Go", 1000, 5)
+	if err != nil {
+		t.Fatalf("SearchRecentPublished: %v", err)
+	}
+	if len(got) != 1 || got[0].Id != 11 {
+		t.Fatalf("unexpected rows: %+v", got)
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newNoteMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, func()) {
 	t.Helper()
 	sqlDB, mock, err := sqlmock.New()

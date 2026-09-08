@@ -128,6 +128,18 @@ func (r *NoteRepositoryImpl) ListPublishedAfterID(ctx context.Context, afterID i
 	return res, nil
 }
 
+func (r *NoteRepositoryImpl) SearchRecentPublished(ctx context.Context, query string, createdAfter int64, limit int) ([]domain.Note, error) {
+	rows, err := r.dao.SearchRecentPublished(ctx, query, createdAfter, limit)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]domain.Note, 0, len(rows))
+	for _, row := range rows {
+		res = append(res, toDomainNote(row, nil))
+	}
+	return res, nil
+}
+
 func (r *NoteRepositoryImpl) SoftDelete(ctx context.Context, id, authorID int64) error {
 	return r.dao.SoftDelete(ctx, id, authorID)
 }

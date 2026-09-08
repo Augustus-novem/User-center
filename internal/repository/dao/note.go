@@ -3,6 +3,7 @@ package dao
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -19,6 +20,7 @@ type NoteDAO interface {
 	ListByAuthor(ctx context.Context, authorID int64, status string, cursor *NoteCursor, limit int) ([]NoteOfDB, error)
 	ListPublishedBefore(ctx context.Context, authorID, exclusiveMaxID int64, limit int) ([]NoteOfDB, error)
 	ListPublishedAfterID(ctx context.Context, afterID int64, limit int) ([]NoteOfDB, error)
+	SearchRecentPublished(ctx context.Context, query string, createdAfter int64, limit int) ([]NoteOfDB, error)
 	SoftDelete(ctx context.Context, id, authorID int64) error
 }
 
@@ -28,12 +30,12 @@ type NoteCursor struct {
 }
 
 type NoteOfDB struct {
-	Id        int64  `gorm:"primaryKey;autoIncrement;index:idx_author_status_created,priority:4"`
+	Id        int64  `gorm:"primaryKey;autoIncrement;index:idx_author_status_created,priority:4;index:idx_note_status_created,priority:3"`
 	AuthorId  int64  `gorm:"column:author_id;not null;index:idx_author_status_created,priority:1"`
 	Title     string `gorm:"type:varchar(80);not null"`
 	Content   string `gorm:"type:text"`
-	Status    string `gorm:"type:varchar(16);not null;index:idx_author_status_created,priority:2"`
-	CreatedAt int64  `gorm:"column:created_at;not null;index:idx_author_status_created,priority:3"`
+	Status    string `gorm:"type:varchar(16);not null;index:idx_author_status_created,priority:2;index:idx_note_status_created,priority:1"`
+	CreatedAt int64  `gorm:"column:created_at;not null;index:idx_author_status_created,priority:3;index:idx_note_status_created,priority:2"`
 	UpdatedAt int64  `gorm:"column:updated_at;not null"`
 }
 
@@ -130,6 +132,26 @@ func (d *GORMNoteDAO) ListPublishedAfterID(ctx context.Context, afterID int64, l
 		Limit(limit).
 		Find(&rows).Error
 	return rows, err
+}
+
+func (d *GORMNoteDAO) SearchRecentPublished(ctx context.Context, query string, createdAfter int64, limit int) ([]NoteOfDB, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	pattern := "%" + escapeLikePattern(query) + "%"
+	var rows []NoteOfDB
+	err := dbFromCtx(ctx, d.db).
+		Where("status = ? AND created_at >= ? AND (title LIKE ? OR content LIKE ?)", "published", createdAfter, pattern, pattern).
+		Select("id", "author_id", "title", "content", "status", "created_at", "updated_at").
+		Order("created_at DESC, id DESC").
+		Limit(limit).
+		Find(&rows).Error
+	return rows, err
+}
+
+func escapeLikePattern(query string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(query)
 }
 
 func (d *GORMNoteDAO) FindByIDs(ctx context.Context, ids []int64) ([]NoteOfDB, error) {

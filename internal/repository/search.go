@@ -17,3 +17,7 @@ type NoteSearchIndex interface {
 type NoteRebuildSource interface {
 	ListPublishedAfterID(ctx context.Context, afterID int64, limit int) ([]domain.Note, error)
 }
+
+type NoteSearchFallback interface {
+	SearchRecentPublished(ctx context.Context, query string, createdAfter int64, limit int) ([]domain.Note, error)
+}

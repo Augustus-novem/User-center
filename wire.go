@@ -28,6 +28,8 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 		service.ServiceSet,
 		ioc.FeedSet,
 		ioc.HotRankSet,
+		ioc.InitNoteSearchIndex,
+		ioc.InitSearchService,
 
 		ioc.InitJWTHandler,
 		web.NewUserHandler,
@@ -38,6 +40,7 @@ func InitWebServer(cfg *config.AppConfig, dyn config.DynamicProvider, l logger.L
 		web.NewEngagementHandler,
 		web.NewFeedHandler,
 		web.NewHotRankHandler,
+		web.NewSearchHandler,
 		ioc.GinMiddlewares,
 		ioc.InitWebServer,
 		ioc.InitOAuth2WechatHandler,

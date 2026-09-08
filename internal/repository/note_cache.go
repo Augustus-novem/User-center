@@ -125,6 +125,10 @@ func (r *CachedNoteRepository) ListPublishedAfterID(ctx context.Context, afterID
 	return r.inner.ListPublishedAfterID(ctx, afterID, limit)
 }
 
+func (r *CachedNoteRepository) SearchRecentPublished(ctx context.Context, query string, createdAfter int64, limit int) ([]domain.Note, error) {
+	return r.inner.SearchRecentPublished(ctx, query, createdAfter, limit)
+}
+
 func (r *CachedNoteRepository) SoftDelete(ctx context.Context, id, authorID int64) error {
 	return r.inner.SoftDelete(ctx, id, authorID)
 }
