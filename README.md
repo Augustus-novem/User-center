@@ -1,6 +1,6 @@
 # user-center
 
-一个基于 Go、Gin、GORM、MySQL、Redis 和 Kafka 的用户中心后端。当前仓库是 `community-v1` 演进前的 backend-only baseline，不包含外部智能服务。
+一个基于 Go、Gin、GORM、MySQL、Redis、Kafka 和 Elasticsearch 的生活图文社区后端。当前仓库是完成 M01–M11 的 `community-v1`，不包含外部智能服务。
 
 ## 当前能力
 
@@ -196,6 +196,11 @@ git diff --check
 ```
 
 Windows 上运行 race detector 需要启用 CGO 并安装 C 编译器；也可以在带有编译器的 Go Linux 环境中执行。
+
+M11 保存了可重复执行的 Note cache、Feed、Outbox/Kafka 和 Search 对照，以及故障矩阵。数值仅代表记录中的本机、fixture 和命令，不应外推为生产 QPS/P95/P99：
+
+- [Community V1 benchmark evidence](docs/community-dev/benchmarks/2026-09-08-m11-community-v1.md)
+- [Failure matrix](docs/community-dev/17_FAILURE_MATRIX.md)
 
 ## 当前边界
 
