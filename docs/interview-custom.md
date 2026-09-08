@@ -23,7 +23,7 @@
 - `worker`：消费 `user.registered` 和 `user.activity`。
 - `notification-service`：消费 `user.registered`，写 Redis 欢迎消息。
 
-`cmd/compensate-job` 虽然可以编译，但补偿函数仍是 no-op，不属于已完成的运行能力。
+旧的 no-op `compensate-job` 实验已在 community-v1.1 清理；当前不宣称存在通用补偿任务。
 
 ## Signup 链路
 

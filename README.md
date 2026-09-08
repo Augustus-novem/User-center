@@ -95,7 +95,7 @@ POST /checkin
 
 Sarama producer 使用 `WaitForAll`，Relay 按 at-least-once 语义工作。Consumer handler 成功返回后才提交消息；消费者必须按可能重复投递设计。
 
-代码中存在 retry/DLQ 相关原型与 DLQ topic 创建逻辑，但当前 consumer 入口没有组合这些 handler，因此不能描述为已接入重试或 DLQ。
+永久非法 JSON/event 只有在同步写入其 `.dlq` topic 成功后才提交原 offset；Redis/MySQL/ES/timeout 与正在处理中的 lease 都保持原消息未提交，等待 Kafka redelivery。项目不使用消息 timestamp 模拟延迟重试。
 
 ## Redis Key
 
@@ -126,8 +126,7 @@ Redis 使用 DB 1。
 │   ├── worker/
 │   ├── notification-service/
 │   ├── search-worker/
-│   ├── search-reindex/
-│   └── compensate-job/
+│   └── search-reindex/
 ├── config/
 ├── internal/
 │   ├── config/
@@ -147,13 +146,11 @@ Redis 使用 DB 1。
 └── wire_gen.go
 ```
 
-`cmd/compensate-job` 目前只是可编译的实验入口，`runCompensate` 仍是 no-op；它不属于已完成的补偿能力。
-
 ## 本地运行
 
 要求：Go 1.25+、Docker Desktop 或 Docker Engine、Docker Compose。
 
-复制环境变量示例并替换所有 `REPLACE_ME`：
+复制环境变量示例并替换所有 `REPLACE_ME`。`MYSQL_ROOT_PASSWORD` 与 `DB_DSN` 中的密码必须保持一致；release 配置会拒绝空值、placeholder 和 dummy JWT 密钥：
 
 ```powershell
 Copy-Item .env.example .env
@@ -204,9 +201,9 @@ M11 保存了可重复执行的 Note cache、Feed、Outbox/Kafka 和 Search 对�
 
 ## 当前边界
 
-- 没有已接入的 Kafka 延迟重试或 DLQ 消费链路。
+- 没有 retry topic 或 broker 延迟重试；当前仅实现永久错误到 DLQ 的可靠转移。
 - 没有账号级登录限流；当前 HTTP 限流是配置驱动的全局 Redis 滑动窗口。
-- `RankConsistencyCache` 和补偿服务代码没有接入运行时依赖图。
+- `RankConsistencyCache` 没有接入运行时依赖图。
 - M07 仅有受控 DAO harness 的 singleflight ON/OFF 回源对照；没有可声明的生产 QPS、P95/P99 或缓存命中率。
 - Outbox Relay 当前没有多实例抢占保护与退避策略。
 - 当前没有笔记更新 API，因此没有 `note.updated` producer；不得把 Elasticsearch 文档覆盖能力描述为已上线的业务更新链路。

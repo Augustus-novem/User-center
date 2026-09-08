@@ -27,14 +27,15 @@ Schema is currently managed by GORM `AutoMigrate` on DB-using process startup. T
 |---|---|---|---|
 | `user:ssid:{ssid}` | String | JWT handler | logout marker, access-token TTL |
 | `user:refresh:ssid:{ssid}` | String | JWT handler | current refresh JTI, refresh TTL |
+| `user:session:absolute:ssid:{ssid}` | String | JWT handler | fixed absolute session deadline/TTL |
 | `phone_code:{biz}:{phone}` | String | SMS login | verification code TTL |
-| `user:info:{user_id}` | String/JSON | user cache | profile read cache |
+| `user:info:{user_id}` | String/JSON | user cache | profile-only DTO; password hash is never cached |
 | `sign:{user_id}:{yyyy}:{mm}` | Bitmap | sign-in cache | signed calendar days |
 | `rank:active:daily:{yyyyMMdd}` | ZSet | activity worker/rank | daily activity ranking |
 | `rank:active:monthly:{yyyyMM}` | ZSet | activity worker/rank | monthly activity ranking |
 | `activity:log:user:{user_id}` | List | activity worker | latest 100 activity entries |
 | `welcome:message:user:{user_id}` | String/JSON | notification-service | welcome message, 90-day TTL |
-| `consumer:event:processing:{namespace}:{event_id}` | String | consumers | in-flight marker |
+| `consumer:event:processing:{namespace}:{event_id}` | String | consumers | random owner-token lease, 5-minute TTL |
 | `consumer:event:done:{namespace}:{event_id}` | String | consumers | completed event marker |
 | `worker:event:done:{event_id}` | String | activity worker | atomic activity event dedup |
 | `feed:inbox:{user_id}` | ZSet | Feed worker/API | note ID inbox, configured max 500 |
@@ -50,4 +51,4 @@ Schema is currently managed by GORM `AutoMigrate` on DB-using process startup. T
 
 | Index | Truth status | Document ID | Fields | Rebuild |
 |---|---|---|---|---|
-| `community_notes` | derived | note ID | note_id, author_id, title, content, created_at, status | `cmd/search-reindex` from MySQL |
+| `community_notes` (alias) | derived | note ID | note_id, author_id, title, content, created_at, status | temp physical index → atomic alias swap → old index delete |

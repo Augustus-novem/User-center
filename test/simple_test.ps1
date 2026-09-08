@@ -167,5 +167,4 @@ Write-Host ""
 Write-Host "提示:" -ForegroundColor Yellow
 Write-Host "- 要测试 Kafka 功能，请确保 Kafka 已启动"
 Write-Host "- 要进行压测，请安装 wrk 工具"
-Write-Host "- 查看详细测试指南: docs/TESTING_GUIDE.md"
 Write-Host ""

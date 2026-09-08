@@ -37,10 +37,9 @@ user-center (Gin)
 ## 当前边界与 Technical Debt
 
 - Outbox Relay 没有多实例抢占保护，也没有专门 retry/backoff。
-- retry handler 与 DLQ topic 代码未接入 consumer 主链路。
+- 永久非法 Kafka 消息会在 DLQ publish 成功后提交；transient 错误保留原 offset 等待重投。
 - notification-service 当前只在 Redis 保存欢迎消息。
 - `RankConsistencyCache` 未接入运行时依赖图。
-- `cmd/compensate-job` 可编译，但补偿函数仍是 no-op。
 - 当前没有账号级登录限流。
 - 没有可引用的 QPS、P95/P99 或缓存命中率基准数据。
 

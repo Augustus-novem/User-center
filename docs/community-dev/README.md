@@ -37,6 +37,7 @@
 | M09 | [Search](milestones/M09_SEARCH_ES.md) | [M09](milestones/M09_LEARNING_HANDOFF.md) |
 | M10 | [Notifications](milestones/M10_NOTIFICATIONS.md) | [M10](milestones/M10_LEARNING_HANDOFF.md) |
 | M11 | [Reliability / Benchmark](milestones/M11_RELIABILITY_BENCHMARK.md) | [M11](milestones/M11_LEARNING_HANDOFF.md) |
+| M12 | [Community v1.1 limited fixes](milestones/M12_COMMUNITY_V1_1.md) | [M12](milestones/M12_LEARNING_HANDOFF.md) |
 
 ## Benchmark history
 

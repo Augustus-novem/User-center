@@ -18,7 +18,7 @@
 
 ## Topic provisioning
 
-`EnsureKafkaTopics` ensures every source topic above and its `.dlq`-suffixed name exist for local development. Creating a DLQ-named topic does not mean DLQ routing is active; no current command composes `RetryableHandler`.
+`EnsureKafkaTopics` ensures every source topic above and its `.dlq`-suffixed name exist for local development. Every runtime consumer publishes permanently invalid JSON/events to `${topic}.dlq`; the source offset is marked only after the synchronous DLQ publish succeeds. Transient infrastructure errors and `BUSY` deduplication leases are not sent to DLQ and are not marked.
 
 ## Ordering
 
