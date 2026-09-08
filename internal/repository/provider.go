@@ -30,4 +30,6 @@ var RepoSet = wire.NewSet(
 	wire.Bind(new(LikeRepository), new(*LikeRepositoryImpl)),
 	NewCommentRepositoryImpl,
 	wire.Bind(new(CommentRepository), new(*CommentRepositoryImpl)),
+	NewNotificationRepositoryImpl,
+	wire.Bind(new(NotificationRepository), new(*NotificationRepositoryImpl)),
 )

@@ -7,5 +7,5 @@ func InitTables(db *gorm.DB) error {
 		&UserSignInStatOfDB{}, &UserSignInRecordOfDB{},
 		&UserPointRecordOfDB{}, &EventOutboxOfDB{},
 		&UserRelationOfDB{}, &NoteOfDB{}, &NoteImageOfDB{},
-		&NoteLikeOfDB{}, &CommentOfDB{})
+		&NoteLikeOfDB{}, &CommentOfDB{}, &NotificationOfDB{})
 }
