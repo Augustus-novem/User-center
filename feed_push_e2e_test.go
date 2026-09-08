@@ -154,7 +154,7 @@ func (s staticDynamic) Dynamic() config.DynamicConfig {
 	return config.DynamicConfig{Feature: s.cfg.Feature}
 }
 
-func loadE2EConfig(t *testing.T) config.AppConfig {
+func loadE2EConfig(t testing.TB) config.AppConfig {
 	t.Helper()
 	mgr, err := config.NewManager("config/dev.yaml")
 	if err != nil {
@@ -163,7 +163,7 @@ func loadE2EConfig(t *testing.T) config.AppConfig {
 	return mgr.App()
 }
 
-func pingE2EDeps(t *testing.T, cfg config.AppConfig) {
+func pingE2EDeps(t testing.TB, cfg config.AppConfig) {
 	t.Helper()
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB})
 	defer func() { _ = rdb.Close() }()
