@@ -13,9 +13,10 @@
 - 笔记点赞/取消点赞、评论发布与时间序 cursor 分页。首次点赞和评论写入 Outbox。
 - 关注 Feed（Hybrid）：普通作者 `note.published` 扇出到 Redis Inbox；follower 数达到 `feed.fanout_threshold` 的作者改走 Pull。`GET /feed/following` 按 `note_id` 合并 Inbox 与大 V 近况。
 - 内容热榜：worker 将 publish/like/comment 聚合到 Redis 分钟桶；`GET /rank/hot` 使用 60 分钟物化 snapshot 稳定分页。
+- 笔记全文搜索：独立 search worker 将 `note.published` / `note.deleted` 投影到 Elasticsearch；`GET /search/notes?q=...` 在 ES 失败时执行最近 30 天、最多 20 条、300ms 超时的 MySQL 有界降级。
 - 每日签到、月度签到记录、连续签到天数。
 - 日榜、月榜及个人排名查询。
-- MySQL Outbox、Kafka Relay、两个 Consumer Group。
+- MySQL Outbox、Kafka Relay、三个 Consumer Group。
 - 注册后异步发放欢迎积分并在 Redis 保存欢迎消息。
 - 签到后异步写入 Redis 行为日志并更新日榜、月榜。
 - Redis Lua 消费去重，以及数据库唯一约束提供的业务幂等保护。
@@ -33,15 +34,19 @@ flowchart LR
     Relay --> Kafka[(Kafka)]
     Kafka --> Worker[worker]
     Kafka --> Notification[notification-service]
+    Kafka --> SearchWorker[search-worker]
     Worker --> MySQL
     Worker --> Redis
     Notification --> Redis
+    SearchWorker --> MySQL
+    SearchWorker --> ES[(Elasticsearch)]
 ```
 
 - `user-center` 处理 HTTP 请求与核心数据库事务，并在同一事务中写入 Outbox。
 - Relay 轮询待发布记录，发送成功后把记录标记为 `published`。
 - `worker` 消费注册、用户行为和 `note.published` 扇出事件。
 - `notification-service` 消费注册事件；当前“通知”是 Redis 中的欢迎消息，不是邮件或短信发送。
+- `search-worker` 使用独立 consumer group，把笔记事件投影到可重建的 Elasticsearch 索引；ES 不是真相源。
 
 ## 核心业务链路
 
@@ -78,6 +83,8 @@ POST /checkin
 | `user.registered` | user-center Outbox Relay | `user-center-notification-service` | Redis 欢迎消息 |
 | `user.activity` | user-center Outbox Relay | `user-center-worker` | 行为日志与签到排行 |
 | `note.published` | user-center Outbox Relay | `user-center-worker` | Feed fanout/skip + Hot Ranking |
+| `note.published` | user-center Outbox Relay | `user-center-search-worker` | 写入笔记搜索索引 |
+| `note.deleted` | user-center Outbox Relay | `user-center-search-worker` | 删除笔记搜索文档 |
 | `note.liked` | user-center Outbox Relay | `user-center-worker` | Hot Ranking 加权聚合 |
 | `comment.created` | user-center Outbox Relay | `user-center-worker` | Hot Ranking 加权聚合 |
 
@@ -113,6 +120,8 @@ Redis 使用 DB 1。
 ├── cmd/
 │   ├── worker/
 │   ├── notification-service/
+│   ├── search-worker/
+│   ├── search-reindex/
 │   └── compensate-job/
 ├── config/
 ├── internal/
@@ -160,9 +169,16 @@ Compose 内部服务通过 `kafka:9092` 连接 Kafka；宿主机直接运行 Go 
 go run . --config=config/dev.yaml
 go run ./cmd/worker --config=config/worker.yaml
 go run ./cmd/notification-service --config=config/notification.yaml
+go run ./cmd/search-worker --config=config/worker.yaml
 ```
 
 主服务监听 `http://localhost:8081`。数据库由启动时的 GORM `AutoMigrate` 初始化。
+
+Elasticsearch 索引是派生数据，可从 MySQL 重建：
+
+```bash
+go run ./cmd/search-reindex --config=config/worker.yaml
+```
 
 ## 验证
 
@@ -183,5 +199,6 @@ Windows 上运行 race detector 需要启用 CGO 并安装 C 编译器；也可�
 - `RankConsistencyCache` 和补偿服务代码没有接入运行时依赖图。
 - M07 仅有受控 DAO harness 的 singleflight ON/OFF 回源对照；没有可声明的生产 QPS、P95/P99 或缓存命中率。
 - Outbox Relay 当前没有多实例抢占保护与退避策略。
+- 当前没有笔记更新 API，因此没有 `note.updated` producer；不得把 Elasticsearch 文档覆盖能力描述为已上线的业务更新链路。
 
 后续增量开发规范见 [docs/community-dev](docs/community-dev/)；项目边界见 [PROJECT_BOUNDARY.md](docs/community-dev/PROJECT_BOUNDARY.md)。
